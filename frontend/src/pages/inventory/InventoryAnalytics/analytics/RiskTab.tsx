@@ -24,7 +24,9 @@
  * All sub-functions are local (not exported) — tightly coupled to this tab.
  * ─────────────────────────────────────────────────────────────────────────────
  */
+import { useState } from 'react';
 import { DeadStockProps, ExpiryLossProps, DeadStockItem, ExpiryLossItem } from './analyticsTypes';
+import { AiService } from '../../../../services/aiService';
 
 // ─── Combined props for the Risk & Loss Audits tab ───────────────────────────
 interface RiskTabProps {
@@ -113,6 +115,23 @@ function DeadStockAnalysisSection({ dynamicDeadStock }: DeadStockProps) {
 
 // ─── Expiry Wastage Summary Panel ─────────────────────────────────────────────
 function ExpiryLossAnalysisSection({ dynamicExpiryLoss, totalExpiryLoss, triggerToast }: ExpiryLossProps) {
+  const [syncing, setSyncing] = useState(false);
+
+  const handleMarkdownClick = async () => {
+    try {
+      setSyncing(true);
+      triggerToast("Running AI Clearance models to analyze near-expiry stock...");
+      const res = await AiService.runAiSync();
+      if (res.success) {
+        triggerToast("AI Clearance markdowns and Apriori combos queued for Admin approval!");
+      }
+    } catch (err: any) {
+      triggerToast(err.message || "Failed to trigger AI optimization engine.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
       <div>
@@ -164,10 +183,13 @@ function ExpiryLossAnalysisSection({ dynamicExpiryLoss, totalExpiryLoss, trigger
       {/* Action Footer */}
       <div className="border-t border-slate-100 pt-4 mt-6">
         <button
-          onClick={() => triggerToast('Markdown promo active! All items expiring in 7 days discounted by 30%!')}
-          className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-lg text-xs transition-colors shadow-sm"
+          onClick={handleMarkdownClick}
+          disabled={syncing}
+          className={`w-full text-white font-bold py-2.5 rounded-lg text-xs transition-colors shadow-sm cursor-pointer ${
+            syncing ? 'bg-slate-400 cursor-not-allowed' : 'bg-rose-600 hover:bg-rose-700'
+          }`}
         >
-          Auto-Apply Markdown Discount
+          {syncing ? "Running AI Clearance..." : "Auto-Apply Markdown Discount"}
         </button>
       </div>
     </div>

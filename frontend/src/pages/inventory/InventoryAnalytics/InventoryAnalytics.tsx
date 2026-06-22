@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import Sidebar from '../Shared/Sidebar';
 import InventoryHeader from '../Shared/InventoryHeader';
@@ -9,10 +10,15 @@ import KpiDashboardCards from './analytics/KpiDashboardCards';
 import OverviewTab from './analytics/OverviewTab';
 import VelocityTab from './analytics/VelocityTab';
 import RiskTab from './analytics/RiskTab';
+import AiInsightsTab from './analytics/AiInsightsTab';
 
 export default function InventoryAnalytics() {
   // ── UI State ────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'overview' | 'velocity' | 'risk'>('overview');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = (searchParams.get('tab') as 'overview' | 'velocity' | 'risk' | 'ai') || 'overview';
+  const setActiveTab = (tab: 'overview' | 'velocity' | 'risk' | 'ai') => {
+    setSearchParams({ tab });
+  };
   const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'year' | 'custom'>('month');
   const [hoveredChartBar, setHoveredChartBar] = useState<string | null>(null);
   const [hoveredDonutSegment, setHoveredDonutSegment] = useState<string | null>(null);
@@ -343,7 +349,8 @@ export default function InventoryAnalytics() {
               {([
                 { id: 'overview', label: 'Overview & Health', icon: 'dashboard' },
                 { id: 'velocity', label: 'Product Velocity', icon: 'bolt' },
-                { id: 'risk', label: 'Risk & Loss Audits', icon: 'warning_amber' }
+                { id: 'risk', label: 'Risk & Loss Audits', icon: 'warning_amber' },
+                { id: 'ai', label: 'AI Recommendations', icon: 'auto_awesome' }
               ] as const).map(tab => (
                 <button
                   key={tab.id}
@@ -400,6 +407,11 @@ export default function InventoryAnalytics() {
                 totalExpiryLoss={totalExpiryLoss}
                 triggerToast={triggerToast}
               />
+            )}
+
+            {/* Tab: AI Recommendations */}
+            {activeTab === 'ai' && (
+              <AiInsightsTab onRefreshParent={handleRefresh} />
             )}
 
           </div>
