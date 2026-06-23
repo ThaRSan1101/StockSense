@@ -720,7 +720,7 @@ export default function InventoryHeader({ children }: InventoryHeaderProps) {
           sales: 'Sales Reports',
           inventory: 'Inventory Reports',
           supplier: 'Supplier Reports',
-          activity: 'Activity Reports',
+          activity: 'Adjustment Reports',
           purchase: 'Purchase Reports',
           alert: 'Alert Reports'
         };

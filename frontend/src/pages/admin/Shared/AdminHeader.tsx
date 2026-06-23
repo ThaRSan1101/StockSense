@@ -437,7 +437,7 @@ export default function AdminHeader({ children }: AdminHeaderProps) {
           sales: 'Sales Reports',
           inventory: 'Inventory Reports',
           supplier: 'Supplier Reports',
-          activity: 'Activity Reports',
+          activity: 'Adjustment Reports',
           purchase: 'Purchase Reports',
           alert: 'Alert Reports'
         };

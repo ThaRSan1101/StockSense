@@ -32,7 +32,7 @@ export default function ProductsPage() {
       id: 5,
       name: 'Artisan Sourdough',
       price: 'Rs. 6.50',
-      image: 'https://images.unsplash.com/photo-1589367920969-ab8e050eb0e9?q=80&w=600&auto=format&fit=crop'
+      image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?q=80&w=600&auto=format&fit=crop'
     },
     {
       id: 6,
@@ -46,7 +46,7 @@ export default function ProductsPage() {
       id: 7,
       name: 'Organic Honey',
       price: 'Rs. 9.00',
-      image: 'https://images.unsplash.com/photo-1587049352847-4d4b1ed748d1?q=80&w=600&auto=format&fit=crop'
+      image: 'https://images.unsplash.com/photo-1664273586932-ab870d61f7e9?q=80&w=600&auto=format&fit=crop'
     },
     {
       id: 8,

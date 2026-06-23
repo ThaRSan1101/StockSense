@@ -43,7 +43,7 @@ export default function CategoryPage() {
         ];
       case 'bakery-items':
         return [
-          { id: 1, name: 'Artisan Sourdough', price: 'Rs. 6.50', image: 'https://images.unsplash.com/photo-1589367920969-ab8e050eb0e9?q=80&w=600&auto=format&fit=crop' },
+          { id: 1, name: 'Artisan Sourdough', price: 'Rs. 6.50', image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?q=80&w=600&auto=format&fit=crop' },
           { id: 2, name: 'Butter Croissants', price: 'Rs. 4.99', image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?q=80&w=600&auto=format&fit=crop' },
           { id: 3, name: 'Blueberry Muffins', price: 'Rs. 5.50', image: 'https://images.unsplash.com/photo-1607958996333-41aef7caefaa?q=80&w=600&auto=format&fit=crop' },
           { id: 4, name: 'French Baguette', price: 'Rs. 3.00', image: 'https://images.unsplash.com/photo-1597079910443-60c43fc4f729?q=80&w=600&auto=format&fit=crop' },

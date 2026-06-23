@@ -25,9 +25,9 @@ const MOCK_PRODUCTS = [
   { id: 8, barcode: '89010008', category: 'SNACKS', name: 'Golden Maple Granola', price: 14.50, discount: 0, image: 'https://images.unsplash.com/photo-1517673132405-a56a62b18caf?q=80&w=600&auto=format&fit=crop' },
   { id: 9, barcode: '89010009', category: 'BEVERAGES', name: 'Pure Alpine Sparkling Water', price: 8.95, discount: 0, image: 'https://images.unsplash.com/photo-1559553156-2e97137af16f?q=80&w=600&auto=format&fit=crop' },
   { id: 10, barcode: '89010010', category: 'PERSONAL CARE', name: 'Botanical Defense Soap', price: 22.00, discount: 10, image: 'https://images.unsplash.com/photo-1608248543803-ba4f8c70ae0b?q=80&w=600&auto=format&fit=crop' },
-  { id: 11, barcode: '89010011', category: 'BAKERY ITEMS', name: 'Artisan Sourdough Bread', price: 6.50, discount: 0, image: 'https://images.unsplash.com/photo-1589367920969-ab8e050eb0e9?q=80&w=600&auto=format&fit=crop' },
+  { id: 11, barcode: '89010011', category: 'BAKERY ITEMS', name: 'Artisan Sourdough Bread', price: 6.50, discount: 0, image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?q=80&w=600&auto=format&fit=crop' },
   { id: 12, barcode: '89010012', category: 'BEVERAGES', name: 'Cold Brew Coffee Concentrate', price: 12.00, discount: 5, image: 'https://images.unsplash.com/photo-1611162458324-aae1eb4129a4?q=80&w=600&auto=format&fit=crop' },
-  { id: 13, barcode: '89010013', category: 'PACKAGED FOODS', name: 'Organic Forest Honey', price: 9.00, discount: 0, image: 'https://images.unsplash.com/photo-1587049352847-4d4b1ed748d1?q=80&w=600&auto=format&fit=crop' },
+  { id: 13, barcode: '89010013', category: 'PACKAGED FOODS', name: 'Organic Forest Honey', price: 9.00, discount: 0, image: 'https://images.unsplash.com/photo-1664273586932-ab870d61f7e9?q=80&w=600&auto=format&fit=crop' },
   { id: 14, barcode: '89010014', category: 'PACKAGED FOODS', name: 'Handcrafted Pink Sea Salt', price: 14.00, discount: 0, image: 'https://images.unsplash.com/photo-1507048331197-7d4ac70811cf?q=80&w=600&auto=format&fit=crop' },
   { id: 15, barcode: '89010015', category: 'SNACKS', name: 'Artisanal Cocoa Cru Chocolate', price: 14.00, discount: 15, image: 'https://images.unsplash.com/photo-1549007994-cb92caebd54b?q=80&w=600&auto=format&fit=crop' },
   { id: 16, barcode: '89010016', category: 'BEVERAGES', name: 'Premium Jasmine Green Tea', price: 18.50, discount: 0, image: 'https://images.unsplash.com/photo-1564890369478-c89ca6d9cde9?q=80&w=600&auto=format&fit=crop' },
@@ -50,6 +50,36 @@ export interface DraftBill {
   cart: any[];
   timestamp: Date;
 }
+
+const getFallbackImage = (category: string, name: string, sku: string, currentImageUrl: string) => {
+  const isDefault = currentImageUrl && currentImageUrl.includes('1542838132-92c53300491e');
+  
+  if (currentImageUrl && !isDefault && currentImageUrl.trim() !== '') {
+    return currentImageUrl;
+  }
+
+  const cat = (category || '').toLowerCase();
+  const prodName = (name || '').toLowerCase();
+  
+  if (cat.includes('bakery')) {
+    if (prodName.includes('bread')) return 'https://images.unsplash.com/photo-1509440159596-0249088772ff?q=80&w=400&auto=format&fit=crop';
+    if (prodName.includes('cake')) return 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?q=80&w=400&auto=format&fit=crop';
+    if (prodName.includes('croissant')) return 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?q=80&w=400&auto=format&fit=crop';
+    if (prodName.includes('cookie')) return 'https://images.unsplash.com/photo-1499636136210-6f4ee915583e?q=80&w=400&auto=format&fit=crop';
+    if (prodName.includes('muffin') || prodName.includes('cupcake')) return 'https://images.unsplash.com/photo-1550617931-e17a7b70dce2?q=80&w=400&auto=format&fit=crop';
+    if (prodName.includes('bun')) return 'https://images.unsplash.com/photo-1608198093002-ad4e005484ec?q=80&w=400&auto=format&fit=crop';
+    
+    const bakeryDefaults = [
+      'https://images.unsplash.com/photo-1509440159596-0249088772ff?q=80&w=400&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1608198093002-ad4e005484ec?q=80&w=400&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1517433622905-015456488a0b?q=80&w=400&auto=format&fit=crop'
+    ];
+    const index = (sku || '').split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % bakeryDefaults.length;
+    return bakeryDefaults[index];
+  }
+  
+  return 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=400&auto=format&fit=crop';
+};
 
 export default function POSPage() {
   const navigate = useNavigate();
@@ -109,7 +139,7 @@ export default function POSPage() {
           name: p.name,
           price: p.sellingPrice,
           discount: p.discount || 0,
-          image: p.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=400&auto=format&fit=crop',
+          image: getFallbackImage(p.masterClass?.category?.name, p.name, p.sku, p.imageUrl),
           currentStock: p.currentStock
         }));
         setProducts(mapped);
@@ -535,7 +565,7 @@ export default function POSPage() {
             name: p.name,
             price: p.sellingPrice,
             discount: p.discount || 0,
-            image: p.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=400&auto=format&fit=crop',
+            image: getFallbackImage(p.masterClass?.category?.name, p.name, p.sku, p.imageUrl),
             currentStock: p.currentStock
           }));
           setProducts(mapped);
