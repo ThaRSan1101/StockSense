@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { inventoryOperationsService, ProductItem, AdjustmentRecord } from './inventoryOperationsService';
+import { api } from '../../../../services/axiosInstance';
 
 const SearchableProductSelect = ({ products, value, onChange }: { products: ProductItem[], value: string, onChange: (val: string) => void }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -118,18 +119,34 @@ export default function StockAdjustments() {
   const [adjustments, setAdjustments] = useState<AdjustmentRecord[]>([]);
   const [toast, setToast] = useState<string | null>(null);
 
+  // Operators (admins + managers) for the Authorized Operator dropdown
+  const [operators, setOperators] = useState<{ id: string; name: string; role: string }[]>([]);
+
   // Form state
   const [selectedProductIndex, setSelectedProductIndex] = useState(0);
   const [qtyDelta, setQtyDelta] = useState<number>(-5);
   const [selectedReason, setSelectedReason] = useState<'Damaged' | 'Lost' | 'Expired' | 'Returned' | 'Counting error' | 'System correction'>('Damaged');
-  const [adjustedBy, setAdjustedBy] = useState('Jane Doe');
+  const [adjustedBy, setAdjustedBy] = useState('');
 
   // Selected adjustment for detail timeline modal
   const [viewingAdjustment, setViewingAdjustment] = useState<AdjustmentRecord | null>(null);
 
   useEffect(() => {
     loadAdjustmentData();
+    loadOperators();
   }, []);
+
+  const loadOperators = async () => {
+    try {
+      const res = await api.get('/auth/operators');
+      if (res.data?.success && res.data.data?.length > 0) {
+        setOperators(res.data.data);
+        setAdjustedBy(res.data.data[0].name);
+      }
+    } catch (err) {
+      console.error('Failed to load operators:', err);
+    }
+  };
 
   const loadAdjustmentData = async () => {
     const prods = await inventoryOperationsService.getProducts();
@@ -138,32 +155,41 @@ export default function StockAdjustments() {
     setAdjustments(adjs);
   };
 
-  // Handle URL SKU and Reason trigger
+  // Handle URL SKU, Reason, and Qty trigger
   useEffect(() => {
     const sku = searchParams.get('sku');
     const reason = searchParams.get('reason');
+    const qtyParam = searchParams.get('qty');
     if (sku && products.length > 0) {
       const idx = products.findIndex(
         p => p.sku.toLowerCase() === sku.toLowerCase() || (p.barcode && p.barcode.toLowerCase() === sku.toLowerCase())
       );
       if (idx !== -1) {
         setSelectedProductIndex(idx);
-
-        // Clear query parameters so it does not loop
-        setSearchParams(prev => {
-          prev.delete('sku');
-          prev.delete('reason');
-          return prev;
-        }, { replace: true });
+        // Pre-fill qty: use URL qty param, otherwise default to negative of product's current stock
+        if (qtyParam !== null) {
+          const parsedQty = parseInt(qtyParam, 10);
+          setQtyDelta(isNaN(parsedQty) ? -products[idx].stock : parsedQty);
+        } else {
+          setQtyDelta(-Math.abs(products[idx].stock));
+        }
       }
 
-      if (reason) {
-        const matchedReason = ['Damaged', 'Lost', 'Expired', 'Returned', 'Counting error', 'System correction'].find(
-          r => r.toLowerCase() === reason.toLowerCase()
-        );
-        if (matchedReason) {
-          setSelectedReason(matchedReason as any);
-        }
+      // Clear query parameters so it does not loop
+      setSearchParams(prev => {
+        prev.delete('sku');
+        prev.delete('reason');
+        prev.delete('qty');
+        return prev;
+      }, { replace: true });
+    }
+
+    if (reason) {
+      const matchedReason = ['Damaged', 'Lost', 'Expired', 'Returned', 'Counting error', 'System correction'].find(
+        r => r.toLowerCase() === reason.toLowerCase()
+      );
+      if (matchedReason) {
+        setSelectedReason(matchedReason as any);
       }
     }
   }, [searchParams, products, setSearchParams]);
@@ -244,8 +270,8 @@ export default function StockAdjustments() {
       const adjs = await inventoryOperationsService.getAdjustments();
       setAdjustments(adjs);
       
-      // Reset qty delta
-      setQtyDelta(-5);
+    // Reset qty delta to negative of new product stock
+      setQtyDelta(-Math.abs(products[selectedProductIndex] ? products[selectedProductIndex].stock : 5));
       
       triggerToast(`Stock adjustment record ${newAdj.adjustmentNumber} synchronized successfully!`);
     } catch (err: any) {
@@ -343,15 +369,24 @@ export default function StockAdjustments() {
                 </select>
               </div>
 
-              {/* Operator */}
+              {/* Operator — dropdown of all admins + managers */}
               <div>
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Authorized Operator</label>
-                <input
-                  type="text"
+                <select
                   value={adjustedBy}
                   onChange={(e) => setAdjustedBy(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#0b8252]"
-                />
+                >
+                  {operators.length === 0 ? (
+                    <option value="">Loading operators...</option>
+                  ) : (
+                    operators.map(op => (
+                      <option key={op.id} value={op.name}>
+                        {op.name} ({op.role === 'ADMIN' ? 'Admin' : 'Manager'})
+                      </option>
+                    ))
+                  )}
+                </select>
               </div>
             </div>
 

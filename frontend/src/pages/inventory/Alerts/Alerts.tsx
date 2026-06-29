@@ -1,4 +1,4 @@
-import { useSearchParams } from 'react-router-dom';
+import { useState } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
 import AdminSidebar from "../../admin/Shared/Sidebar";
 import AdminHeader from "../../admin/Shared/AdminHeader";
@@ -10,10 +10,11 @@ import AlertFilterBar from './components/AlertFilterBar';
 import EmptyAlertsState from './components/EmptyAlertsState';
 import AlertCard from './components/AlertCard';
 import NotificationDetailsPopup from '../../../components/shared/NotificationDetailsPopup';
+import ProductSpecModal, { ProductSpecItem } from '../../../components/shared/ProductSpecModal';
+import { api } from '../../../services/axiosInstance';
+import { AlertItem } from './types/alertTypes';
 
 export default function Alerts() {
-  const [searchParams, setSearchParams] = useSearchParams();
-
   const {
     visible,
     unread,
@@ -49,6 +50,53 @@ export default function Alerts() {
 
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
+
+  // ── Product Spec Modal state ───────────────────────────────────────────────
+  const [viewingProduct, setViewingProduct] = useState<ProductSpecItem | null>(null);
+  const [loadingProduct, setLoadingProduct] = useState(false);
+
+  const handleViewProduct = async (alert: AlertItem) => {
+    const sku = alert.sku;
+    if (!sku) return;
+
+    try {
+      setLoadingProduct(true);
+      // Fetch all products and find the one matching this SKU
+      const res = await api.get('/products');
+      const products: any[] = res.data?.data ?? res.data ?? [];
+      const found = products.find((p: any) => p.sku === sku);
+      if (!found) return;
+
+      // Map backend product shape to ProductSpecItem
+      const specProduct: ProductSpecItem = {
+        id: found.sku,
+        name: found.name,
+        sku: found.sku,
+        barcode: found.barcode,
+        category: found.masterClass?.category?.name ?? found.category ?? '—',
+        subcategory: found.masterClass?.subCategory?.name ?? found.subcategory ?? '',
+        supplier: found.masterClass?.supplier?.name ?? found.supplier ?? '—',
+        brand: found.masterClass?.brand?.name ?? found.brand ?? '',
+        unitType: found.unitType,
+        stock: found.currentStock,
+        reorderLevel: found.reorderLevel,
+        targetCapacity: found.targetCapacity,
+        costPrice: found.costPrice,
+        sellingPrice: found.sellingPrice,
+        status: found.status,
+        imageUrl: found.imageUrl ?? null,
+        description: found.description ?? '',
+        mfgDate: found.mfgDate ? new Date(found.mfgDate).toLocaleDateString('en-GB') : undefined,
+        expiryDate: found.expiryDate ? new Date(found.expiryDate).toLocaleDateString('en-GB') : undefined,
+        batchNumber: found.batchNumber ?? undefined,
+      };
+      setViewingProduct(specProduct);
+    } catch (err) {
+      console.error('Failed to fetch product details:', err);
+    } finally {
+      setLoadingProduct(false);
+    }
+  };
 
   return (
     <div className="flex h-screen bg-[#f8f9fa] text-slate-800 font-sans overflow-hidden">
@@ -151,10 +199,21 @@ export default function Alerts() {
                     handlePrimary={handlePrimary}
                     dismiss={dismiss}
                     markRead={markRead}
+                    onViewProduct={handleViewProduct}
                   />
                 ))
               )}
             </div>
+
+            {/* Loading overlay while fetching product */}
+            {loadingProduct && (
+              <div className="fixed inset-0 z-[190] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                <div className="bg-white rounded-xl p-6 flex items-center gap-3 shadow-xl">
+                  <span className="material-symbols-outlined text-[#0b8252] animate-spin text-[24px]">progress_activity</span>
+                  <span className="text-sm font-bold text-slate-700">Loading product details...</span>
+                </div>
+              </div>
+            )}
 
           </div>
         </main>
@@ -166,6 +225,14 @@ export default function Alerts() {
           notification={selectedNotification}
           onClose={() => setSelectedNotification(null)}
           onActionComplete={loadDynamicAlerts}
+        />
+      )}
+
+      {/* Product Specification Details Modal */}
+      {viewingProduct && (
+        <ProductSpecModal
+          product={viewingProduct}
+          onClose={() => setViewingProduct(null)}
         />
       )}
     </div>

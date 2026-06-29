@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { login, refreshToken, logout, me, updateProfile, createUser, listUsers, toggleUserStatus, updateUser, resetPassword } from '../controllers/authController.js'
+import { login, refreshToken, logout, me, updateProfile, createUser, listUsers, listOperators, toggleUserStatus, updateUser, resetPassword } from '../controllers/authController.js'
 import { authenticate, requireRole } from '../middlewares/authMiddleware.js'
 
 const router = Router()
@@ -12,6 +12,7 @@ router.post('/logout', logout)
 // Protected routes (any logged-in user)
 router.get('/me', authenticate, me)
 router.put('/profile', authenticate, updateProfile)
+router.get('/operators', authenticate, listOperators)
 
 // Admin-only routes
 router.post('/users', authenticate, requireRole('ADMIN'), createUser)

@@ -322,15 +322,17 @@ export default function DiscountRegistry({ products, showToast, showConfirm }: D
     return matchesSearch && matchesType;
   });
 
-  // Handle URL action=add / add-combo and sku trigger
+  // Handle URL action=add / add-combo and sku + campaign_name trigger
   useEffect(() => {
     const action = searchParams.get('action');
     const sku = searchParams.get('sku');
+    const campaignNameParam = searchParams.get('campaign_name');
     if ((action === 'add' || action === 'add-combo') && products.length > 0) {
       // Clear URL params so we don't reopen/repopulate on subsequent renders
       setSearchParams(prev => {
         prev.delete('action');
         prev.delete('sku');
+        prev.delete('campaign_name');
         return prev;
       }, { replace: true });
 
@@ -352,6 +354,11 @@ export default function DiscountRegistry({ products, showToast, showConfirm }: D
 
       if (action === 'add-combo') {
         setType('COMBO');
+      }
+
+      // Pre-fill campaign name if provided from alert
+      if (campaignNameParam) {
+        setName(campaignNameParam);
       }
     }
   }, [searchParams, products, setSearchParams]);

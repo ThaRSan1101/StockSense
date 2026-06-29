@@ -1,19 +1,19 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { AlertItem, AlertSeverity } from '../types/alertTypes';
+import { Link } from 'react-router-dom';
 
 interface AlertCardProps {
   alert: AlertItem;
   handlePrimary: (a: AlertItem) => void;
   dismiss: (id: number | string) => void;
   markRead: (id: number | string) => void;
+  onViewProduct: (a: AlertItem) => void;
 }
 
-// Derive SKU from dynamic alert IDs like dyn_out_SKU-001 or dyn_exp_SKU-001
+// Derive SKU from dynamic alert IDs like dyn_out_SKU-001
 const extractSku = (id: string | number): string | null => {
   if (typeof id !== 'string') return null;
   const parts = id.split('_');
-  // dynamic IDs: dyn_TYPE_SKU  → last segment is the SKU
   if (id.startsWith('dyn_') && parts.length >= 3) return parts.slice(2).join('_');
   return null;
 };
@@ -52,34 +52,34 @@ const getExpiryBadge = (days: number | undefined) => {
   return { label: `${Math.ceil(days / 7)} WEEKS`, cls: 'bg-yellow-100 text-yellow-700 border-yellow-200' };
 };
 
-export default function AlertCard({ alert, handlePrimary, dismiss, markRead }: AlertCardProps) {
+// Primary action is hidden for Low Stock, Out of Stock, and Overstock
+const showPrimaryAction = (category: string): boolean => {
+  return category !== 'Low Stock' && category !== 'Out of Stock' && category !== 'Overstock';
+};
+
+export default function AlertCard({ alert, handlePrimary, dismiss, markRead, onViewProduct }: AlertCardProps) {
   const expiryBadge = getExpiryBadge(alert.daysUntilExpiry);
   const stockPct = alert.stockPercentage ?? null;
   const sku = alert.sku || extractSku(alert.id);
 
-  // Decide where "View" button links based on alert category
-  const viewLink = alert.category === 'Overstock' || alert.primaryAction === 'View Procurement'
-    ? '/procurement'
-    : alert.category === 'Discount'
-      ? '/manage-products?tab=discounts'
-      : sku
-        ? `/manage-products?tab=products&search=${sku}`
-        : '/manage-products?tab=products';
+  // All product-related alerts (including Overstock) open the spec modal.
+  // Only Discount links away to the discounts tab.
+  const isProductAlert = alert.category !== 'Discount';
 
-  const viewLabel = alert.category === 'Overstock' || alert.primaryAction === 'View Procurement'
-    ? 'View Procurement'
-    : alert.category === 'Discount'
-      ? 'View Discounts'
-      : 'View Product';
+  const viewLabel = alert.category === 'Discount'
+    ? 'View Discounts'
+    : 'View Product';
+
+  const hasPrimary = showPrimaryAction(alert.category);
 
   return (
     <div
       className={`bg-white rounded-xl border shadow-sm flex overflow-hidden transition-all hover:shadow-md ${
-        alert.read ? 'opacity-70 border-slate-200' : 'border-slate-200'
+        alert.read ? 'opacity-80 border-emerald-200 bg-emerald-50/30' : 'border-slate-200'
       }`}
     >
       {/* Left accent bar */}
-      <div className={`w-1.5 flex-shrink-0 ${alert.accentColor}`} />
+      <div className={`w-1.5 flex-shrink-0 ${alert.read ? 'bg-emerald-400' : alert.accentColor}`} />
 
       <div className="p-5 flex flex-col sm:flex-row gap-5 flex-1">
 
@@ -103,6 +103,12 @@ export default function AlertCard({ alert, handlePrimary, dismiss, markRead }: A
                 ⏰ {expiryBadge.label}
               </span>
             )}
+            {alert.read && (
+              <span className="px-2 py-0.5 text-[9px] font-bold rounded-full uppercase tracking-wider bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                <span className="material-symbols-outlined text-[10px]">check_circle</span>
+                Read
+              </span>
+            )}
             <span className="text-[10px] text-slate-400 font-medium ml-auto">{alert.time}</span>
             {!alert.read && (
               <span className="w-2 h-2 bg-[#0b8252] rounded-full" title="Unread" />
@@ -117,7 +123,6 @@ export default function AlertCard({ alert, handlePrimary, dismiss, markRead }: A
             <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
               <span className="block text-[9px] font-bold uppercase text-slate-400 mb-1 tracking-wider">Current Stock</span>
               <span className="font-extrabold text-slate-800 text-sm">{alert.currentStock} units</span>
-              {/* Stock percentage bar */}
               {stockPct !== null && (
                 <div className="mt-2">
                   <div className="flex justify-between mb-1">
@@ -145,26 +150,54 @@ export default function AlertCard({ alert, handlePrimary, dismiss, markRead }: A
 
         {/* Action Buttons */}
         <div className="flex flex-col gap-2 mt-4 sm:mt-0 min-w-[180px] self-start sm:self-center">
-          <button
-            onClick={() => handlePrimary(alert)}
-            className={`w-full px-3 py-2 rounded-lg text-xs font-bold border transition-colors text-white ${alert.primaryBtnClass}`}
-          >
-            {alert.primaryAction}
-          </button>
-          <Link
-            to={viewLink}
-            className="w-full flex items-center justify-center px-3 py-2 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors"
-          >
-            {viewLabel}
-          </Link>
-          <button
-            onClick={() => markRead(alert.id)}
-            className="w-full px-3 py-2 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors"
-          >
-            Mark Read
-          </button>
-        </div>
 
+          {/* Primary action — hidden for Low Stock and Out of Stock */}
+          {hasPrimary && (
+            <button
+              onClick={() => handlePrimary(alert)}
+              className={`w-full px-3 py-2 rounded-lg text-xs font-bold border transition-colors text-white ${alert.primaryBtnClass}`}
+            >
+              {alert.primaryAction}
+            </button>
+          )}
+
+          {/* View Product — opens Product Specification Details modal inline */}
+          {isProductAlert && sku ? (
+            <button
+              onClick={() => onViewProduct(alert)}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              <span className="material-symbols-outlined text-[14px]">inventory</span>
+              {viewLabel}
+            </button>
+          ) : (
+            <Link
+              to={alert.category === 'Discount' ? '/manage-products?tab=discounts' : '/procurement'}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              <span className="material-symbols-outlined text-[14px]">open_in_new</span>
+              {viewLabel}
+            </Link>
+          )}
+
+          {/* Mark Read — hidden for Overstock alerts */}
+          {alert.category !== 'Overstock' && (
+            <button
+              onClick={() => markRead(alert.id)}
+              className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border transition-colors ${
+                alert.read
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[14px]">
+                {alert.read ? 'check_circle' : 'radio_button_unchecked'}
+              </span>
+              {alert.read ? 'Marked Read' : 'Mark Read'}
+            </button>
+          )}
+
+        </div>
       </div>
     </div>
   );

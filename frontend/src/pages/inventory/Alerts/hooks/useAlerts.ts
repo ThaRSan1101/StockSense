@@ -152,11 +152,15 @@ export const useAlerts = () => {
             }),
             read: false, // In backend response, active ones are returned. Read ones are filtered out by server.
             dismissed: false, // We fetch them regardless, they are visible on alerts page.
-            primaryAction: (n.type === 'EXPIRING_SOON' || n.type === 'OVERSTOCK')
-              ? 'Remove Shelf'
-              : (n.type === 'STOCK_VELOCITY')
+            primaryAction: n.type === 'EXPIRED'
+              ? 'Remove Product'
+              : n.type === 'EXPIRING_SOON'
                 ? 'Create Promotion'
-                : (n.suggestedAction ?? 'Acknowledge'),
+                : n.type === 'OVERSTOCK'
+                  ? 'Remove Shelf'
+                  : n.type === 'STOCK_VELOCITY'
+                    ? 'Create Promotion'
+                    : (n.suggestedAction ?? 'Acknowledge'),
             secondaryAction: 'Dismiss',
             primaryBtnClass: styles.primaryBtnClass,
             sku: n.sku || n.product?.sku,
@@ -189,10 +193,21 @@ export const useAlerts = () => {
 
   const markRead = async (id: number | string) => {
     try {
+      // Toggle read state locally so the card stays visible with a tick
+      setAlerts(prev =>
+        prev.map(a =>
+          a.id === id ? { ...a, read: !a.read } : a
+        )
+      );
+      // Persist to backend (mark as read — we don't toggle on backend, just record read)
       await NotificationService.markRead(String(id));
-      sonnerToast.success('Alert marked as read.');
-      loadDynamicAlerts();
     } catch {
+      // Revert local toggle on failure
+      setAlerts(prev =>
+        prev.map(a =>
+          a.id === id ? { ...a, read: !a.read } : a
+        )
+      );
       sonnerToast.error('Failed to mark read.');
     }
   };
@@ -209,24 +224,39 @@ export const useAlerts = () => {
   };
 
   const handlePrimary = async (a: AlertItem) => {
-    // Locate the raw notification object
+    // EXPIRED: navigate to Stock Adjustments with SKU + reason pre-filled
+    if (a.issueType === 'EXPIRED' && a.sku) {
+      navigate(`/inventory-operations?tab=adjustments&sku=${encodeURIComponent(a.sku)}&reason=Expired&qty=${encodeURIComponent(String(-Math.abs(a.currentStock || 0)))}`);
+      return;
+    }
+
+    // EXPIRING_SOON / STOCK_VELOCITY (Dead Stock): Create Promotion → open discounts with campaign name + sku pre-filled
+    if (
+      (a.issueType === 'EXPIRING_SOON' || a.issueType === 'STOCK_VELOCITY') &&
+      a.primaryAction === 'Create Promotion'
+    ) {
+      const params = new URLSearchParams({ tab: 'discounts', action: 'add' });
+      if (a.sku) params.set('sku', a.sku);
+      // Extract just the product name from the title (strip "— Expiring Soon" / "— Dead Stock Warning" suffix)
+      const productName = (a.title || '').split(' — ')[0].split(' – ')[0].trim();
+      const campaignName = productName ? `${productName} Promotion` : '';
+      if (campaignName) params.set('campaign_name', campaignName);
+      navigate(`/manage-products?${params.toString()}`);
+      return;
+    }
+
+    // All other types: open the notification details popup
     const raw = rawNotifications.find(n => n.id === a.id);
     if (raw) {
-      // Set to selected so the details popup opens
       setSelectedNotification(raw);
     } else {
-      // Fallback redirect
-      if (a.category === 'Low Stock' || a.category === 'Out of Stock') {
-        navigate('/inventory-operations?tab=grn');
-      } else {
-        markRead(a.id);
-      }
+      markRead(a.id);
     }
   };
 
   // ── Derived counts ────────────────────────────────────────────────────────
-  const visible = alerts; // On Alerts page, we show everything fetched (excluding read)
-  const unread = alerts.length; // Active count
+  const visible = alerts; // On Alerts page, we show everything (read ones stay with tick)
+  const unread = alerts.filter(a => !a.read).length; // Count of unread alerts
   const criticalAlerts = visible.filter((a) => a.severity === 'Critical').length;
   const lowStockAlerts = visible.filter((a) => a.category === 'Low Stock').length;
   const outOfStockAlerts = visible.filter((a) => a.category === 'Out of Stock').length;

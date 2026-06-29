@@ -248,6 +248,26 @@ export async function listUsers(req: AuthRequest, res: Response): Promise<void> 
   }
 }
 
+// ─── GET /api/auth/operators (Any authenticated user — list admins + managers) ──
+export async function listOperators(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const operators = await prisma.user.findMany({
+      where: {
+        role: { in: ['ADMIN', 'INVENTORY_MANAGER'] },
+        isActive: true,
+      },
+      select: { id: true, name: true, email: true, role: true },
+      orderBy: { name: 'asc' },
+    })
+
+    res.status(200).json({ success: true, data: operators })
+  } catch (err) {
+    console.error('[listOperators error]', err)
+    res.status(500).json({ success: false, message: 'Internal server error.' })
+  }
+}
+
+
 // ─── PATCH /api/auth/users/:id/toggle (Admin only — activate/deactivate) ──
 export async function toggleUserStatus(req: AuthRequest, res: Response): Promise<void> {
   try {
