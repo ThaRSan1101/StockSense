@@ -18,6 +18,72 @@ export const createRefund = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
+    // 1. Fetch original bill to verify items and prices
+    const originalBill = await prisma.bill.findUnique({
+      where: { id: originalBillId },
+      include: {
+        billItems: true,
+        refunds: {
+          include: { refundItems: true }
+        }
+      }
+    });
+
+    if (!originalBill) {
+      res.status(404).json({ success: false, message: 'Original bill not found.' });
+      return;
+    }
+
+    // Calculate previously refunded quantities map
+    const previouslyRefundedQtyMap = new Map<string, number>();
+    for (const pastRefund of originalBill.refunds) {
+      for (const pItem of pastRefund.refundItems) {
+        const current = previouslyRefundedQtyMap.get(pItem.sku) || 0;
+        previouslyRefundedQtyMap.set(pItem.sku, current + pItem.qty);
+      }
+    }
+
+    let calculatedTotalRefundAmount = 0;
+    const verifiedRefundItems: any[] = [];
+
+    // Verify each refund item
+    for (const item of refundItems) {
+      const billItem = originalBill.billItems.find(bi => bi.sku === item.sku);
+      if (!billItem) {
+        res.status(400).json({ success: false, message: `Item SKU ${item.sku} was not found in the original bill.` });
+        return;
+      }
+
+      const reqQty = parseInt(item.qty);
+      if (isNaN(reqQty) || reqQty <= 0) {
+        res.status(400).json({ success: false, message: `Invalid quantity for SKU ${item.sku}.` });
+        return;
+      }
+
+      const pastRefundedQty = previouslyRefundedQtyMap.get(item.sku) || 0;
+      const maxRefundableQty = billItem.qty - pastRefundedQty;
+
+      if (reqQty > maxRefundableQty) {
+        res.status(400).json({ 
+          success: false, 
+          message: `Cannot refund ${reqQty} of SKU ${item.sku}. Only ${maxRefundableQty} unit(s) available for refund.` 
+        });
+        return;
+      }
+
+      // Automatically calculate exact refund value per unit from the original bill
+      const unitPaidPrice = billItem.total / billItem.qty;
+      const itemRefundValue = unitPaidPrice * reqQty;
+
+      calculatedTotalRefundAmount += itemRefundValue;
+
+      verifiedRefundItems.push({
+        sku: item.sku,
+        qty: reqQty,
+        refundValue: itemRefundValue
+      });
+    }
+
     // Generate next sequential refund number (RF-1001, RF-1002...)
     const prefix = 'RF';
     const latestRefund = await prisma.refund.findFirst({
@@ -43,22 +109,15 @@ export const createRefund = async (req: AuthRequest, res: Response): Promise<voi
 
     // Execute in a database transaction
     const result = await prisma.$transaction(async (tx) => {
-      // Calculate total refund amount
-      const refundAmount = refundItems.reduce((sum, item) => sum + (parseFloat(item.refundValue) * parseInt(item.qty)), 0);
-
       // 1. Create the Refund record
       const refund = await tx.refund.create({
         data: {
           refundNumber,
           originalBillId,
           cashierId,
-          refundAmount,
+          refundAmount: calculatedTotalRefundAmount,
           refundItems: {
-            create: refundItems.map((item: any) => ({
-              sku: item.sku,
-              qty: parseInt(item.qty),
-              refundValue: parseFloat(item.refundValue)
-            }))
+            create: verifiedRefundItems
           }
         },
         include: {

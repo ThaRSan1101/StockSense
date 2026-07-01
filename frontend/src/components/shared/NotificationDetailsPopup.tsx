@@ -344,19 +344,23 @@ export default function NotificationDetailsPopup({
           {/* Fallback actions if not handled by standard templates */}
           {notification.type !== 'DISCOUNT_APPROVAL' && notification.type !== 'LOW_STOCK' && notification.type !== 'OUT_OF_STOCK' && (
             <div className="flex gap-3 pt-2">
-              <button
-                onClick={handleActionClick}
-                className="flex-1 bg-[#0b8252] hover:bg-[#096b43] text-white font-bold py-2.5 rounded-xl text-xs transition-colors shadow-sm cursor-pointer"
-              >
-                {(notification.type === 'EXPIRING_SOON' || notification.type === 'OVERSTOCK')
-                  ? 'Remove Shelf'
-                  : notification.type === 'STOCK_VELOCITY'
-                    ? 'Create Promotion'
-                    : (notification.suggestedAction || 'Acknowledge Action')}
-              </button>
+              {notification.type !== 'DEMAND_FORECAST' && (
+                <button
+                  onClick={handleActionClick}
+                  className="flex-1 bg-[#0b8252] hover:bg-[#096b43] text-white font-bold py-2.5 rounded-xl text-xs transition-colors shadow-sm cursor-pointer"
+                >
+                  {(notification.type === 'EXPIRING_SOON' || notification.type === 'OVERSTOCK')
+                    ? 'Remove Shelf'
+                    : notification.type === 'STOCK_VELOCITY'
+                      ? 'Create Promotion'
+                      : (notification.suggestedAction || 'Acknowledge Action')}
+                </button>
+              )}
               <button
                 onClick={handleMarkReadAndClose}
-                className="px-5 py-2.5 border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                className={`py-2.5 border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold rounded-xl text-xs transition-colors cursor-pointer ${
+                  notification.type === 'DEMAND_FORECAST' ? 'flex-1 bg-slate-50' : 'px-5'
+                }`}
               >
                 Dismiss
               </button>

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ProductImageUploader from './SubComponents/ProductImageUploader';
 import BarcodeScannerModal from './SubComponents/BarcodeScannerModal';
+import { MasterDataService } from '../../../../services/masterDataService';
 import { toast } from 'sonner';
 
 type SupplierOption = {
@@ -111,16 +112,72 @@ export default function NewProductForm({
 
   const [structure, setStructure] = useState<ProductStructure>(initialProduct?.variants?.length ? 'variant' : 'single');
 
-  const [singleCostPrice, setSingleCostPrice] = useState<number>(initialProduct?.costPrice || 0);
-  const [singleSellingPrice, setSingleSellingPrice] = useState<number>(initialProduct?.sellingPrice || 0);
-  const [singleDiscountPrice, setSingleDiscountPrice] = useState<number>(initialProduct?.discountPrice || 0);
-  const [singleStock, setSingleStock] = useState<number>(initialProduct?.stock || 0);
-  const [singleTargetCapacity, setSingleTargetCapacity] = useState<number>(
-    initialProduct?.targetCapacity || 100
+  const [singleCostPrice, setSingleCostPrice] = useState<number | ''>(initialProduct?.costPrice !== undefined ? initialProduct.costPrice : 0);
+  const [singleSellingPrice, setSingleSellingPrice] = useState<number | ''>(initialProduct?.sellingPrice !== undefined ? initialProduct.sellingPrice : 0);
+  const [singleDiscountPrice, setSingleDiscountPrice] = useState<number | ''>(initialProduct?.discountPrice !== undefined ? initialProduct.discountPrice : 0);
+  const [singleStock, setSingleStock] = useState<number | ''>(initialProduct?.stock !== undefined ? initialProduct.stock : 0);
+  const [singleTargetCapacity, setSingleTargetCapacity] = useState<number | ''>(
+    initialProduct?.targetCapacity !== undefined ? initialProduct.targetCapacity : 100
   );
   const [singleUnit, setSingleUnit] = useState(initialProduct?.unitType || UNIT_OPTIONS[0]);
   const [singleSku, setSingleSku] = useState<string>(initialProduct?.sku || '');
   const [singleBarcode, setSingleBarcode] = useState<string>(initialProduct?.barcode || createBarcode());
+
+  // Existing SKUs database for uniqueness validation
+  const [existingSkus, setExistingSkus] = useState<string[]>([]);
+  const [isSkuManuallyEdited, setIsSkuManuallyEdited] = useState(false);
+  const [isVariantSkuManuallyEdited, setIsVariantSkuManuallyEdited] = useState(false);
+
+  useEffect(() => {
+    const fetchExistingSkus = async () => {
+      try {
+        const res = await MasterDataService.getProducts();
+        if (res?.success && Array.isArray(res.data)) {
+          const skus = res.data.map((p: any) => p.sku).filter(Boolean);
+          setExistingSkus(skus);
+        }
+      } catch (err) {
+        console.error('Failed to fetch existing SKUs for validation:', err);
+      }
+    };
+    fetchExistingSkus();
+  }, []);
+
+  // Intelligent SKU Generator
+  const generateSkuCode = (
+    name: string,
+    catName: string,
+    subName: string,
+    brandName: string,
+    existingSkusList: string[]
+  ): string => {
+    const catCode = (catName || 'GEN').trim().substring(0, 3).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const subCode = (subName || 'GEN').trim().substring(0, 3).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const brandCode = (brandName || name || 'PRD').trim().substring(0, 3).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    
+    let extraCode = '';
+    const match = name.match(/\b(\d+(?:g|kg|ml|l|oz|pcs))\b/i);
+    if (match) {
+      extraCode = '-' + match[1].toUpperCase();
+    }
+
+    const basePrefix = `${catCode}-${subCode}-${brandCode}${extraCode}`;
+    let sequence = 1;
+    let candidate = `${basePrefix}-${String(sequence).padStart(3, '0')}`;
+    
+    while (existingSkusList.includes(candidate)) {
+      sequence++;
+      candidate = `${basePrefix}-${String(sequence).padStart(3, '0')}`;
+    }
+    return candidate;
+  };
+
+  useEffect(() => {
+    if (!initialProduct && !isSkuManuallyEdited && productName.trim() && category) {
+      const suggestion = generateSkuCode(productName, category, subcategory, brand, existingSkus);
+      setSingleSku(suggestion);
+    }
+  }, [productName, category, subcategory, brand, existingSkus, isSkuManuallyEdited, initialProduct]);
 
   const [reorderPercent, setReorderPercent] = useState<number>(25);
   useEffect(() => {
@@ -137,7 +194,7 @@ export default function NewProductForm({
     }
   }, []);
 
-  const calculatedReorderPoint = Math.round((reorderPercent / 100) * singleTargetCapacity);
+  const calculatedReorderPoint = Math.round((reorderPercent / 100) * (singleTargetCapacity === '' ? 100 : singleTargetCapacity));
 
   const [variantImageMode] = useState<VariantImageMode>('different');
   const [autoVariantBarcode] = useState(true);
@@ -155,8 +212,8 @@ export default function NewProductForm({
   const [batchNumber, setBatchNumber] = useState(initialProduct?.batchNumber || '');
 
   const [status, setStatus] = useState<ProductStatus>(initialProduct?.status || 'Active');
-  const [promotionEligible, setPromotionEligible] = useState<boolean>(Boolean(initialProduct?.promotionEligible));
-  const [seasonalProduct, setSeasonalProduct] = useState<boolean>(Boolean(initialProduct?.seasonalProduct));
+  const promotionEligible = Boolean(initialProduct?.promotionEligible);
+  const seasonalProduct = Boolean(initialProduct?.seasonalProduct);
 
   const [fastMoving] = useState<boolean>(Boolean(initialProduct?.fastMoving));
   const [lowStockAlertThreshold] = useState<number>(
@@ -203,9 +260,11 @@ export default function NewProductForm({
   };
 
   const singleMetrics = useMemo(() => {
-    const profit = singleSellingPrice - singleCostPrice;
-    const margin = singleSellingPrice > 0 ? (profit / singleSellingPrice) * 100 : 0;
-    const markup = singleCostPrice > 0 ? (profit / singleCostPrice) * 100 : 0;
+    const cost = singleCostPrice === '' ? 0 : Number(singleCostPrice);
+    const sell = singleSellingPrice === '' ? 0 : Number(singleSellingPrice);
+    const profit = sell - cost;
+    const margin = sell > 0 ? (profit / sell) * 100 : 0;
+    const markup = cost > 0 ? (profit / cost) * 100 : 0;
     return { profit, margin, markup };
   }, [singleCostPrice, singleSellingPrice]);
 
@@ -218,9 +277,9 @@ export default function NewProductForm({
       Boolean(frontImageUrl) ||
       additionalImages.length > 0 ||
       structure !== 'single' ||
-      singleCostPrice > 0 ||
-      singleSellingPrice > 0 ||
-      singleStock > 0 ||
+      (singleCostPrice !== '' && Number(singleCostPrice) > 0) ||
+      (singleSellingPrice !== '' && Number(singleSellingPrice) > 0) ||
+      (singleStock !== '' && Number(singleStock) > 0) ||
       variants.length > 0 ||
       mfgDate !== '' ||
       expiryDate !== '' ||
@@ -248,12 +307,14 @@ export default function NewProductForm({
 
   const openNewVariantModal = () => {
     resetVariantDraft();
+    setIsVariantSkuManuallyEdited(false);
     setIsVariantModalOpen(true);
   };
 
   const openEditVariantModal = (variant: VariantItem) => {
     setEditingVariantId(variant.id);
     setVariantDraft({ ...variant });
+    setIsVariantSkuManuallyEdited(true);
     setIsVariantModalOpen(true);
   };
 
@@ -276,6 +337,41 @@ export default function NewProductForm({
     }
     if (variantImageMode === 'different' && !variantDraft.imageUrl) {
       toast.error('Variant image is required when "different images" is enabled.');
+      return;
+    }
+
+    if (variantDraft.mfgDate && variantDraft.expiryDate) {
+      const mfg = new Date(variantDraft.mfgDate);
+      const exp = new Date(variantDraft.expiryDate);
+      if (exp <= mfg) {
+        toast.error('Variant Expiry Date must be after Manufacturing Date.');
+        return;
+      }
+    }
+
+    const vCost = Number(variantDraft.costPrice);
+    const vSell = Number(variantDraft.sellingPrice);
+    const vStock = Number(variantDraft.stock || 0);
+    const vCapacity = Number(variantDraft.targetCapacity || 50);
+
+    if (isNaN(vCost) || vCost <= 0) {
+      toast.error('Variant Cost Price must be a positive number.');
+      return;
+    }
+    if (isNaN(vSell) || vSell <= 0) {
+      toast.error('Variant Selling Price must be a positive number.');
+      return;
+    }
+    if (vSell < vCost) {
+      toast.error('Variant Selling Price cannot be less than Cost Price.');
+      return;
+    }
+    if (isNaN(vStock) || vStock < 0 || !Number.isInteger(vStock)) {
+      toast.error('Variant Stock must be a non-negative integer.');
+      return;
+    }
+    if (isNaN(vCapacity) || vCapacity <= 0 || !Number.isInteger(vCapacity)) {
+      toast.error('Variant Target Capacity must be a positive integer.');
       return;
     }
 
@@ -305,12 +401,11 @@ export default function NewProductForm({
     resetVariantDraft();
   };
 
-  const handleVariantDelete = (id: string) => {
-    setVariants((prev) => prev.filter((item) => item.id !== id));
-  };
 
 
-  const validateBeforeSave = () => {
+
+
+  const validateBeforeSave = (draftMode = false) => {
     if (!productName.trim()) {
       toast.error('Product Name is required.');
       return false;
@@ -334,6 +429,52 @@ export default function NewProductForm({
         toast.error('Unit of Measurement is required.');
         return false;
       }
+
+      // Validate required dates when NOT saving as draft
+      if (!draftMode) {
+        if (!mfgDate) {
+          toast.error('Manufacturing Date is required.');
+          return false;
+        }
+        if (!expiryDate) {
+          toast.error('Expiry Date is required.');
+          return false;
+        }
+      }
+
+      const cost = singleCostPrice === '' ? 0 : Number(singleCostPrice);
+      const sell = singleSellingPrice === '' ? 0 : Number(singleSellingPrice);
+      const stock = singleStock === '' ? 0 : Number(singleStock);
+      const capacity = singleTargetCapacity === '' ? 100 : Number(singleTargetCapacity);
+
+      if (isNaN(cost) || cost <= 0) {
+        toast.error('Cost Price must be a positive number.');
+        return false;
+      }
+      if (isNaN(sell) || sell <= 0) {
+        toast.error('Selling Price must be a positive number.');
+        return false;
+      }
+      if (sell < cost) {
+        toast.error('Selling Price cannot be less than Cost Price.');
+        return false;
+      }
+      if (isNaN(stock) || stock < 0 || !Number.isInteger(stock)) {
+        toast.error('Stock must be a non-negative integer.');
+        return false;
+      }
+      if (isNaN(capacity) || capacity <= 0 || !Number.isInteger(capacity)) {
+        toast.error('Target Capacity must be a positive integer.');
+        return false;
+      }
+      if (mfgDate && expiryDate) {
+        const mfg = new Date(mfgDate);
+        const exp = new Date(expiryDate);
+        if (exp <= mfg) {
+          toast.error('Expiry Date must be after Manufacturing Date.');
+          return false;
+        }
+      }
     }
 
     if (structure === 'variant') {
@@ -350,6 +491,20 @@ export default function NewProductForm({
         toast.error('Every variant must include an image when different images are enabled.');
         return false;
       }
+
+      // Validate required dates when NOT saving as draft for variants
+      if (!draftMode) {
+        for (const v of variants) {
+          if (!v.mfgDate) {
+            toast.error(`Manufacturing Date is required for variant "${v.variantName}".`);
+            return false;
+          }
+          if (!v.expiryDate) {
+            toast.error(`Expiry Date is required for variant "${v.variantName}".`);
+            return false;
+          }
+        }
+      }
     }
 
     return true;
@@ -357,7 +512,7 @@ export default function NewProductForm({
 
   const handleSubmit = (e: React.FormEvent, draftMode = false) => {
     e.preventDefault();
-    if (!validateBeforeSave()) return;
+    if (!validateBeforeSave(draftMode)) return;
 
     onSave({
       id: initialProduct?.id || `prod_${Date.now()}`,
@@ -376,12 +531,12 @@ export default function NewProductForm({
       sku: structure === 'single' ? singleSku.trim() : null,
       barcode: structure === 'single' ? singleBarcode.trim() : null,
       unitType: structure === 'single' ? singleUnit : null,
-      stock: structure === 'single' ? singleStock : null,
+      stock: structure === 'single' ? (singleStock === '' ? 0 : Number(singleStock)) : null,
       reorderLevel: structure === 'single' ? calculatedReorderPoint : null,
-      targetCapacity: structure === 'single' ? singleTargetCapacity : null,
-      costPrice: structure === 'single' ? singleCostPrice : null,
-      sellingPrice: structure === 'single' ? singleSellingPrice : null,
-      discountPrice: structure === 'single' ? singleDiscountPrice : null,
+      targetCapacity: structure === 'single' ? (singleTargetCapacity === '' ? 100 : Number(singleTargetCapacity)) : null,
+      costPrice: structure === 'single' ? (singleCostPrice === '' ? 0 : Number(singleCostPrice)) : null,
+      sellingPrice: structure === 'single' ? (singleSellingPrice === '' ? 0 : Number(singleSellingPrice)) : null,
+      discountPrice: structure === 'single' ? (singleDiscountPrice === '' ? 0 : Number(singleDiscountPrice)) : null,
 
       variants: structure === 'variant' ? variants : [],
       variantSettings:
@@ -601,11 +756,11 @@ export default function NewProductForm({
                             unit: singleUnit,
                             sku: singleSku || `VAR-${Date.now()}`,
                             barcode: singleBarcode,
-                            costPrice: singleCostPrice,
-                            sellingPrice: singleSellingPrice,
-                            stock: singleStock,
+                            costPrice: singleCostPrice === '' ? 0 : Number(singleCostPrice),
+                            sellingPrice: singleSellingPrice === '' ? 0 : Number(singleSellingPrice),
+                            stock: singleStock === '' ? 0 : Number(singleStock),
                             reorderLevel: calculatedReorderPoint,
-                            targetCapacity: singleTargetCapacity,
+                            targetCapacity: singleTargetCapacity === '' ? 100 : Number(singleTargetCapacity),
                             imageUrl: frontImageUrl,
                             mfgDate: mfgDate,
                             expiryDate: expiryDate,
@@ -650,8 +805,11 @@ export default function NewProductForm({
                       type="number"
                       min="0"
                       step="1"
-                      value={singleCostPrice || ''}
-                      onChange={(e) => setSingleCostPrice(Math.max(0, parseFloat(e.target.value) || 0))}
+                      value={singleCostPrice}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSingleCostPrice(val === '' ? '' : Math.max(0, parseFloat(val) || 0));
+                      }}
                       className="w-full px-4 py-2.5 bg-background border border-outline-variant rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
                     />
                   </div>
@@ -661,8 +819,11 @@ export default function NewProductForm({
                       type="number"
                       min="0"
                       step="1"
-                      value={singleSellingPrice || ''}
-                      onChange={(e) => setSingleSellingPrice(Math.max(0, parseFloat(e.target.value) || 0))}
+                      value={singleSellingPrice}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSingleSellingPrice(val === '' ? '' : Math.max(0, parseFloat(val) || 0));
+                      }}
                       className="w-full px-4 py-2.5 bg-background border border-outline-variant rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
                     />
                   </div>
@@ -672,8 +833,11 @@ export default function NewProductForm({
                       type="number"
                       min="0"
                       step="1"
-                      value={singleDiscountPrice || ''}
-                      onChange={(e) => setSingleDiscountPrice(Math.max(0, parseFloat(e.target.value) || 0))}
+                      value={singleDiscountPrice}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSingleDiscountPrice(val === '' ? '' : Math.max(0, parseFloat(val) || 0));
+                      }}
                       className="w-full px-4 py-2.5 bg-background border border-outline-variant rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
                     />
                   </div>
@@ -707,7 +871,10 @@ export default function NewProductForm({
                       type="number"
                       min="1"
                       value={singleTargetCapacity}
-                      onChange={(e) => setSingleTargetCapacity(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSingleTargetCapacity(val === '' ? '' : Math.max(1, parseInt(val, 10) || 1));
+                      }}
                       className="w-full px-4 py-2.5 bg-background border border-outline-variant rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
                     />
                     <p className="text-[9px] text-outline mt-1 font-medium">100% capacity limit of the product.</p>
@@ -718,7 +885,10 @@ export default function NewProductForm({
                       type="number"
                       min="0"
                       value={singleStock}
-                      onChange={(e) => setSingleStock(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSingleStock(val === '' ? '' : Math.max(0, parseInt(val, 10) || 0));
+                      }}
                       className="w-full px-4 py-2.5 bg-background border border-outline-variant rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
                     />
                     <p className="text-[9px] text-outline mt-1 font-medium">Current physical stock quantity.</p>
@@ -755,11 +925,30 @@ export default function NewProductForm({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[10px] font-bold text-outline uppercase tracking-wider mb-1.5">SKU ID *</label>
+                    <div className="flex justify-between items-center mb-1.5">
+                      <label className="text-[10px] font-bold text-outline uppercase tracking-wider">SKU ID *</label>
+                      {!initialProduct && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const suggestion = generateSkuCode(productName, category, subcategory, brand, existingSkus);
+                            setSingleSku(suggestion);
+                            setIsSkuManuallyEdited(false);
+                          }}
+                          className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">autorenew</span>
+                          Generate Suggestion
+                        </button>
+                      )}
+                    </div>
                     <input
                       type="text"
                       value={singleSku}
-                      onChange={(e) => setSingleSku(e.target.value)}
+                      onChange={(e) => {
+                        setSingleSku(e.target.value);
+                        setIsSkuManuallyEdited(true);
+                      }}
                       placeholder="e.g. DAI-005"
                       disabled={Boolean(initialProduct)}
                       className="w-full px-4 py-2.5 bg-background border border-outline-variant rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary disabled:bg-slate-50 disabled:text-on-surface-variant/80 disabled:cursor-not-allowed"
@@ -934,6 +1123,7 @@ export default function NewProductForm({
                   <input
                     type="date"
                     value={expiryDate}
+                    min={new Date().toISOString().split('T')[0]}
                     onChange={(e) => setExpiryDate(e.target.value)}
                     className="w-full px-4 py-2.5 bg-background border border-outline-variant rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
                   />
@@ -978,22 +1168,6 @@ export default function NewProductForm({
                 </div>
               </div>
 
-              <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={promotionEligible}
-                  onChange={(e) => setPromotionEligible(e.target.checked)}
-                />
-                Promotion Eligible
-              </label>
-              <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={seasonalProduct}
-                  onChange={(e) => setSeasonalProduct(e.target.checked)}
-                />
-                Seasonal Product
-              </label>
             </div>
           </div>
 
@@ -1054,7 +1228,18 @@ export default function NewProductForm({
                   <input
                     type="text"
                     value={variantDraft.variantName}
-                    onChange={(e) => setVariantDraft((prev) => ({ ...prev, variantName: e.target.value }))}
+                    onChange={(e) => {
+                      const nameVal = e.target.value;
+                      setVariantDraft((prev) => {
+                        const next = { ...prev, variantName: nameVal };
+                        if (!isVariantSkuManuallyEdited) {
+                          const parentSku = singleSku || 'PROD';
+                          const suffix = nameVal.trim().substring(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '');
+                          next.sku = suffix ? `${parentSku}-${suffix}` : parentSku;
+                        }
+                        return next;
+                      });
+                    }}
                     placeholder="e.g. Chocolate"
                     className="w-full px-4 py-2.5 bg-background border border-outline-variant rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
                   />
@@ -1095,11 +1280,30 @@ export default function NewProductForm({
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider mb-1.5">SKU ID *</label>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="text-[10px] font-bold text-outline uppercase tracking-wider">SKU ID *</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const parentSku = singleSku || 'PROD';
+                        const suffix = variantDraft.variantName.trim().substring(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '');
+                        const suggestion = suffix ? `${parentSku}-${suffix}` : parentSku;
+                        setVariantDraft((prev) => ({ ...prev, sku: suggestion }));
+                        setIsVariantSkuManuallyEdited(false);
+                      }}
+                      className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">autorenew</span>
+                      Generate Sku
+                    </button>
+                  </div>
                   <input
                     type="text"
                     value={variantDraft.sku}
-                    onChange={(e) => setVariantDraft((prev) => ({ ...prev, sku: e.target.value }))}
+                    onChange={(e) => {
+                      setVariantDraft((prev) => ({ ...prev, sku: e.target.value }));
+                      setIsVariantSkuManuallyEdited(true);
+                    }}
                     placeholder="e.g. VAR-001"
                     disabled={editingVariantId ? !editingVariantId.startsWith('var_') : false}
                     className="w-full px-4 py-2.5 bg-background border border-outline-variant rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary disabled:bg-slate-50 disabled:text-on-surface-variant/80 disabled:cursor-not-allowed"
@@ -1141,13 +1345,14 @@ export default function NewProductForm({
                   <input
                     type="number"
                     min="1"
-                    value={variantDraft.targetCapacity || 100}
+                    value={variantDraft.targetCapacity}
                     onChange={(e) => {
-                      const capacity = Math.max(1, parseInt(e.target.value, 10) || 1);
-                      const reorderVal = Math.round((reorderPercent / 100) * capacity);
+                      const val = e.target.value;
+                      const capacity = val === '' ? '' : Math.max(1, parseInt(val, 10) || 1);
+                      const reorderVal = capacity === '' ? 0 : Math.round((reorderPercent / 100) * capacity);
                       setVariantDraft((prev) => ({
                         ...prev,
-                        targetCapacity: capacity,
+                        targetCapacity: capacity as any,
                         reorderLevel: reorderVal
                       }));
                     }}
@@ -1160,9 +1365,13 @@ export default function NewProductForm({
                     type="number"
                     min="0"
                     value={variantDraft.stock}
-                    onChange={(e) =>
-                      setVariantDraft((prev) => ({ ...prev, stock: Math.max(0, parseInt(e.target.value, 10) || 0) }))
-                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setVariantDraft((prev) => ({
+                        ...prev,
+                        stock: val === '' ? '' : Math.max(0, parseInt(val, 10) || 0) as any
+                      }));
+                    }}
                     className="w-full px-4 py-2.5 bg-background border border-outline-variant rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
@@ -1185,10 +1394,14 @@ export default function NewProductForm({
                     type="number"
                     min="0"
                     step="1"
-                    value={variantDraft.costPrice || ''}
-                    onChange={(e) =>
-                      setVariantDraft((prev) => ({ ...prev, costPrice: Math.max(0, parseFloat(e.target.value) || 0) }))
-                    }
+                    value={variantDraft.costPrice}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setVariantDraft((prev) => ({
+                        ...prev,
+                        costPrice: val === '' ? '' : Math.max(0, parseFloat(val) || 0) as any
+                      }));
+                    }}
                     className="w-full px-4 py-2.5 bg-background border border-outline-variant rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
@@ -1198,10 +1411,14 @@ export default function NewProductForm({
                     type="number"
                     min="0"
                     step="1"
-                    value={variantDraft.sellingPrice || ''}
-                    onChange={(e) =>
-                      setVariantDraft((prev) => ({ ...prev, sellingPrice: Math.max(0, parseFloat(e.target.value) || 0) }))
-                    }
+                    value={variantDraft.sellingPrice}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setVariantDraft((prev) => ({
+                        ...prev,
+                        sellingPrice: val === '' ? '' : Math.max(0, parseFloat(val) || 0) as any
+                      }));
+                    }}
                     className="w-full px-4 py-2.5 bg-background border border-outline-variant rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
@@ -1227,6 +1444,7 @@ export default function NewProductForm({
                       <input
                         type="date"
                         value={variantDraft.expiryDate || ''}
+                        min={new Date().toISOString().split('T')[0]}
                         onChange={(e) => setVariantDraft((prev) => ({ ...prev, expiryDate: e.target.value }))}
                         className="w-full px-3 py-2 bg-background border border-outline-variant rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
                       />

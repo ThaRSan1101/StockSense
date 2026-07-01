@@ -91,6 +91,14 @@ export default function BrandRegistry({
       toast.error('Please enter a valid brand name.');
       return;
     }
+    if (trimmedName.length > 50) {
+      toast.error('Brand name must be 50 characters or less.');
+      return;
+    }
+    if (trimmedDesc.length > 250) {
+      toast.error('Brand description must be 250 characters or less.');
+      return;
+    }
 
     if (editingBrand) {
       onEditBrand(editingBrand.id, { name: trimmedName, description: trimmedDesc });

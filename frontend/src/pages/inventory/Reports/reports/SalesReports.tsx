@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { downloadReport, ViewState } from './reportUtils';
-import { inventoryOperationsService, ProductItem, LedgerEntry } from '../../StockOperations/operations/inventoryOperationsService';
+import { inventoryOperationsService, ProductItem } from '../../StockOperations/operations/inventoryOperationsService';
+import { SalesService } from '../../../../services/salesService';
 
 export default function SalesReports({ onViewChange }: { onViewChange: (view: ViewState) => void }) {
   const [period, setPeriod] = useState<'Today' | 'Week' | 'Month' | 'Year' | 'Custom Range'>('Month');
@@ -10,7 +11,7 @@ export default function SalesReports({ onViewChange }: { onViewChange: (view: Vi
 
   // Live Database States
   const [products, setProducts] = useState<ProductItem[]>([]);
-  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [bills, setBills] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -23,13 +24,13 @@ export default function SalesReports({ onViewChange }: { onViewChange: (view: Vi
     let active = true;
     async function loadSalesData() {
       try {
-        const [loadedProducts, loadedLedger] = await Promise.all([
+        const [loadedProducts, loadedBillsResponse] = await Promise.all([
           inventoryOperationsService.getProducts(),
-          inventoryOperationsService.getLedger(),
+          SalesService.getSalesHistory(),
         ]);
         if (!active) return;
         setProducts(loadedProducts);
-        setLedger(loadedLedger);
+        setBills(loadedBillsResponse.data || []);
         setLoading(false);
       } catch (err) {
         console.error('Failed to load live sales reports data', err);
@@ -83,18 +84,24 @@ export default function SalesReports({ onViewChange }: { onViewChange: (view: Vi
   };
 
   const { start, end } = getPeriodDateRange();
-  const periodLedger = ledger.filter(entry => {
-    const entryDate = new Date(entry.timestamp);
+  const periodBills = bills.filter(bill => {
+    const entryDate = new Date(bill.createdAt);
     return entryDate >= start && entryDate <= end;
   });
 
   // Calculate units sold, price, and revenue for each product in the selected period
   const salesItems = products.map(product => {
-    const salesEntries = periodLedger.filter(
-      entry => entry.sku === product.sku && entry.movementType === 'Sale'
-    );
-    const qty = salesEntries.reduce((sum, entry) => sum + Math.abs(entry.quantityChange), 0);
-    const revenue = qty * product.sellingPrice;
+    let qty = 0;
+    let revenue = 0;
+
+    periodBills.forEach(bill => {
+      bill.billItems?.forEach((item: any) => {
+        if (item.sku === product.sku) {
+          qty += item.qty;
+          revenue += item.total;
+        }
+      });
+    });
 
     return {
       name: product.name,
@@ -134,8 +141,8 @@ export default function SalesReports({ onViewChange }: { onViewChange: (view: Vi
   const totalPages = Math.max(1, Math.ceil(sortedProducts.length / itemsPerPage));
 
   // KPIs
-  const totalSalesValue = salesItems.reduce((sum, item) => sum + item.numericRev, 0);
-  const totalOrders = periodLedger.filter(entry => entry.movementType === 'Sale').length;
+  const totalSalesValue = periodBills.reduce((sum, bill) => sum + bill.totalBill, 0);
+  const totalOrders = periodBills.length;
   
   // Find top selling product
   const sortedAll = [...salesItems].sort((a, b) => b.qty - a.qty);

@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { toast } from 'sonner'
 
 const API_URL = import.meta.env.VITE_NODE_API_URL || 'http://localhost:5000/api'
 
@@ -38,10 +39,16 @@ api.interceptors.response.use(
     const originalRequest = error.config
 
     // IMPORTANT: Never try to auto-refresh on auth endpoints themselves.
-    // If /auth/login fails with 401 (wrong password), we should NOT call
-    // /auth/refresh — that causes "No refresh token provided" to show instead
-    // of the real error message.
     const isAuthEndpoint = originalRequest?.url?.includes('/auth/')
+
+    // Handle non-401 errors globally
+    if (error.response && error.response.status !== 401 && !isAuthEndpoint) {
+      const message = error.response.data?.message || 'An unexpected error occurred';
+      // Suppress global toast if request opts out (not standard axios, but good practice if needed)
+      if (!originalRequest.suppressGlobalError) {
+        toast.error(message);
+      }
+    }
 
     // Only auto-refresh if:
     // 1. The response was 401 Unauthorized

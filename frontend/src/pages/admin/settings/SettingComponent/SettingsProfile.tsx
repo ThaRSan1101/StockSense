@@ -10,6 +10,7 @@ export default function SettingsProfile() {
   const [phone, setPhone] = useState(user?.phone || '');
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
   useEffect(() => {
     if (user) {
@@ -19,9 +20,26 @@ export default function SettingsProfile() {
     }
   }, [user]);
 
+  const validateForm = () => {
+    const newErrors: { [key: string]: string } = {};
+    if (!/^[a-zA-Z\s]+$/.test(fullName)) {
+      newErrors.fullName = 'Name must contain only English letters.';
+    }
+    if (phone && !/^\d{10}$/.test(phone)) {
+      newErrors.phone = 'Phone number must be exactly 10 digits.';
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateForm()) {
+      toast.error('Please fix the errors in the form.');
+      return;
+    }
     setIsSaving(true);
+    setErrors({});
     try {
       const updatedUser = await authService.updateProfile({
         name: fullName,
@@ -64,9 +82,10 @@ export default function SettingsProfile() {
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="w-full bg-slate-50/50 border border-slate-200 text-slate-800 text-[15px] rounded-xl px-4 py-3 focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252] focus:bg-white transition-all"
+                className={`w-full bg-slate-50/50 border ${errors.fullName ? 'border-rose-500' : 'border-slate-200'} text-slate-800 text-[15px] rounded-xl px-4 py-3 focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252] focus:bg-white transition-all`}
                 required
               />
+              {errors.fullName && <p className="text-[10px] text-rose-500 font-medium">{errors.fullName}</p>}
             </div>
 
             <div className="flex flex-col gap-2">
@@ -86,8 +105,9 @@ export default function SettingsProfile() {
                 type="text"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                className="w-full bg-slate-50/50 border border-slate-200 text-slate-800 text-[15px] rounded-xl px-4 py-3 focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252] focus:bg-white transition-all"
+                className={`w-full bg-slate-50/50 border ${errors.phone ? 'border-rose-500' : 'border-slate-200'} text-slate-800 text-[15px] rounded-xl px-4 py-3 focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252] focus:bg-white transition-all`}
               />
+              {errors.phone && <p className="text-[10px] text-rose-500 font-medium">{errors.phone}</p>}
             </div>
 
             <div className="flex flex-col gap-2">

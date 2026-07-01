@@ -6,20 +6,21 @@ import {
   createSubCategory, 
   updateSubCategory 
 } from '../controllers/categoryController.js';
+import { authenticate, requireRole } from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
 
 router.route('/')
   .get(getCategories)
-  .post(createCategory);
+  .post(authenticate, requireRole('ADMIN', 'INVENTORY_MANAGER'), createCategory);
 
 router.route('/:id')
-  .put(updateCategory);
+  .put(authenticate, requireRole('ADMIN', 'INVENTORY_MANAGER'), updateCategory);
 
 router.route('/subcategories')
-  .post(createSubCategory);
+  .post(authenticate, requireRole('ADMIN', 'INVENTORY_MANAGER'), createSubCategory);
 
 router.route('/subcategories/:id')
-  .put(updateSubCategory);
+  .put(authenticate, requireRole('ADMIN', 'INVENTORY_MANAGER'), updateSubCategory);
 
 export default router;

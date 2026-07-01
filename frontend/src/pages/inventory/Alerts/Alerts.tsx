@@ -15,6 +15,7 @@ import { api } from '../../../services/axiosInstance';
 import { AlertItem } from './types/alertTypes';
 
 export default function Alerts() {
+
   const {
     visible,
     unread,
@@ -36,11 +37,9 @@ export default function Alerts() {
     setSevFilter,
     readFilter,
     setReadFilter,
-    filtersActive,
     tabCount,
     dismiss,
     markRead,
-    markAllRead,
     handlePrimary,
     loading,
     selectedNotification,
@@ -122,31 +121,6 @@ export default function Alerts() {
                     </span>
                   )}
                 </p>
-              </div>
-              <div className="flex items-center gap-3">
-                {/* Filters button */}
-                <button
-                  onClick={() => setShowFilters(true)}
-                  className={`flex items-center gap-2 px-4 py-2.5 border font-bold text-sm rounded-lg shadow-sm transition-colors ${
-                    filtersActive
-                      ? 'bg-[#eef8f2] border-[#0b8252] text-[#0b8252]'
-                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[18px]">filter_list</span>
-                  Filters
-                  {filtersActive && <span className="w-2 h-2 bg-[#0b8252] rounded-full" />}
-                </button>
-
-                {/* Mark All Read */}
-                <button
-                  onClick={markAllRead}
-                  disabled={unread === 0}
-                  className="flex items-center gap-2 bg-[#0b8252] text-white px-5 py-2.5 rounded-lg font-bold text-sm shadow-sm hover:bg-[#096b43] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <span className="material-symbols-outlined text-[18px]">done_all</span>
-                  Mark All Read
-                </button>
               </div>
             </div>
 

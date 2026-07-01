@@ -1,24 +1,47 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
+import { authService } from '../../../../services/authService';
 
 export default function SettingsAccount() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handlePasswordChange = (e: React.FormEvent) => {
+  const validatePassword = (password: string) => {
+    return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/.test(password);
+  };
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+
     if (newPassword !== confirmPassword) {
       setError('New passwords do not match');
       toast.error('New passwords do not match');
       return;
     }
-    setError(null);
-    toast.success('Password updated successfully!');
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
+
+    if (!validatePassword(newPassword)) {
+      setError('Password must be at least 8 characters long, and include uppercase, lowercase, number and special character');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await authService.updatePassword({ currentPassword, newPassword });
+      toast.success('Password updated successfully!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Failed to update password.';
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -87,9 +110,11 @@ export default function SettingsAccount() {
           <div className="pt-6 mt-6 border-t border-slate-50 flex justify-end">
             <button
               type="submit"
-              className="px-6 py-2.5 bg-[#0b8252] hover:bg-[#096b43] text-white font-bold text-[14px] rounded-xl shadow-sm active:scale-[0.98] transition-all"
+              disabled={isSubmitting}
+              className="px-6 py-2.5 bg-[#0b8252] hover:bg-[#096b43] text-white font-bold text-[14px] rounded-xl shadow-sm active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              Update Password
+              {isSubmitting && <span className="material-symbols-outlined animate-spin text-[18px]">progress_activity</span>}
+              {isSubmitting ? 'Updating...' : 'Update Password'}
             </button>
           </div>
         </form>

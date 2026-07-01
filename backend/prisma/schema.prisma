@@ -239,6 +239,8 @@ model Bill {
   paymentMethod  PaymentMethod @default(CASH) @map("payment_method")
   draft          Boolean       @default(false)
   totalQty       Int           @map("total_qty")
+  paidAmount     Float?        @map("paid_amount")
+  changeAmount   Float?        @map("change_amount")
   createdAt      DateTime      @default(now()) @map("created_at")
 
   // Relations

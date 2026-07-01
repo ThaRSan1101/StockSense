@@ -83,7 +83,6 @@ export const getDiscounts = async (_req: Request, res: Response): Promise<void> 
   }
 };
 
-// Create a new discount
 export const createDiscount = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
@@ -103,19 +102,46 @@ export const createDiscount = async (req: Request, res: Response): Promise<void>
       comboItems,  // array of { productId, minQty }
     } = req.body;
 
-    if (!name || !type) {
+    const cleanName = name?.trim();
+    const cleanLabel = label?.trim() || null;
+    const cleanImageUrl = imageUrl?.trim() || null;
+
+    if (!cleanName || !type) {
       res.status(400).json({ success: false, message: 'Name and type are required' });
       return;
+    }
+    if (cleanName.length > 100) {
+      res.status(400).json({ success: false, message: 'Discount campaign name must be 100 characters or less.' });
+      return;
+    }
+
+    const val = parseFloat(discountValue) || 0;
+    if (isNaN(val) || val <= 0 || val > 100) {
+      res.status(400).json({ success: false, message: 'Discount value must be a positive percentage between 0 and 100.' });
+      return;
+    }
+
+    if (type === 'SEASONAL') {
+      if (!startDate || !endDate) {
+        res.status(400).json({ success: false, message: 'Seasonal campaigns require start and end dates.' });
+        return;
+      }
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      if (end <= start) {
+        res.status(400).json({ success: false, message: 'End date must be after start date.' });
+        return;
+      }
     }
 
     // Prepare data
     const data: any = {
-      name,
+      name: cleanName,
       type: type as DiscountType,
-      discountValue: parseFloat(discountValue) || 0,
+      discountValue: val,
       comboPrice: null,
-      label: label || null,
-      imageUrl: imageUrl || null,
+      label: cleanLabel,
+      imageUrl: cleanImageUrl,
       startDate: (type === 'SEASONAL' && startDate) ? new Date(startDate) : null,
       endDate: (type === 'SEASONAL' && endDate) ? new Date(endDate) : null,
       dailyStartTime: type === 'DAILY' ? dailyStartTime : null,
@@ -181,7 +207,6 @@ export const createDiscount = async (req: Request, res: Response): Promise<void>
   }
 };
 
-// Update an existing discount
 export const updateDiscount = async (req: Request, res: Response): Promise<void> => {
   try {
     const id = req.params.id as string;
@@ -210,16 +235,54 @@ export const updateDiscount = async (req: Request, res: Response): Promise<void>
       return;
     }
 
+    const cleanName = name !== undefined ? name?.trim() : undefined;
+    const cleanLabel = label !== undefined ? (label !== null ? label?.trim() : null) : undefined;
+    const cleanImageUrl = imageUrl !== undefined ? (imageUrl !== null ? imageUrl?.trim() : null) : undefined;
+
+    if (cleanName !== undefined && !cleanName) {
+      res.status(400).json({ success: false, message: 'Discount campaign name cannot be empty.' });
+      return;
+    }
+    if (cleanName !== undefined && cleanName.length > 100) {
+      res.status(400).json({ success: false, message: 'Discount campaign name must be 100 characters or less.' });
+      return;
+    }
+
+    if (discountValue !== undefined) {
+      const val = parseFloat(discountValue) || 0;
+      if (isNaN(val) || val <= 0 || val > 100) {
+        res.status(400).json({ success: false, message: 'Discount value must be a positive percentage between 0 and 100.' });
+        return;
+      }
+    }
+
+    const finalType = type || discount.type;
+    const finalStartDate = startDate !== undefined ? startDate : discount.startDate;
+    const finalEndDate = endDate !== undefined ? endDate : discount.endDate;
+
+    if (finalType === 'SEASONAL') {
+      if (!finalStartDate || !finalEndDate) {
+        res.status(400).json({ success: false, message: 'Seasonal campaigns require start and end dates.' });
+        return;
+      }
+      const start = new Date(finalStartDate);
+      const end = new Date(finalEndDate);
+      if (end <= start) {
+        res.status(400).json({ success: false, message: 'End date must be after start date.' });
+        return;
+      }
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
       const updatedDiscount = await tx.discount.update({
         where: { id },
         data: {
-          name: name !== undefined ? name : undefined,
+          name: cleanName,
           type: type !== undefined ? (type as DiscountType) : undefined,
           discountValue: discountValue !== undefined ? parseFloat(discountValue) || 0 : undefined,
           comboPrice: null,
-          label: label !== undefined ? label || null : undefined,
-          imageUrl: imageUrl !== undefined ? imageUrl || null : undefined,
+          label: cleanLabel,
+          imageUrl: cleanImageUrl,
           startDate: startDate !== undefined ? (startDate ? new Date(startDate) : null) : undefined,
           endDate: endDate !== undefined ? (endDate ? new Date(endDate) : null) : undefined,
           dailyStartTime: dailyStartTime !== undefined ? dailyStartTime || null : undefined,

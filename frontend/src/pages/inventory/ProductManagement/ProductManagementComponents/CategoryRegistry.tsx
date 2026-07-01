@@ -62,8 +62,7 @@ export default function CategoryRegistry({
   onRestoreCategory,
   onArchiveSubcategory,
   onRestoreSubcategory,
-  onEditProduct,
-  onArchiveProduct
+  onEditProduct
 }: CategoryRegistryProps) {
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -179,6 +178,14 @@ export default function CategoryRegistry({
   const handleSave = () => {
     const trimmed = categoryName.trim();
     if (!trimmed) { toast.error('Please enter a valid category name.'); return; }
+    if (trimmed.length > 50) {
+      toast.error('Category name must be 50 characters or less.');
+      return;
+    }
+    if (categoryDescription.trim().length > 250) {
+      toast.error('Category description must be 250 characters or less.');
+      return;
+    }
     let isDuplicate = false;
     if (editingCategory) {
       isDuplicate = categories.some(c => c.id !== editingCategory.id && c.name.toLowerCase() === trimmed.toLowerCase());

@@ -18,17 +18,22 @@ export default function AccountManagement() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPermissions, setShowPermissions] = useState(false);
   
-  // New User Form
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
-    username: '',
+    email: '',
     password: '',
     confirmPassword: '',
     role: 'CASHIER' as 'CASHIER' | 'INVENTORY_MANAGER',
     status: 'ACTIVE'
   });
   const [submitting, setSubmitting] = useState(false);
+  const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
+  const [emailCheck, setEmailCheck] = useState<{ loading: boolean; available: boolean | null; msg: string }>({ loading: false, available: null, msg: '' });
+  
+  // Password Visibility State
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Edit User Form
   const [editingUser, setEditingUser] = useState<AuthUser | null>(null);
@@ -61,6 +66,67 @@ export default function AccountManagement() {
     loadUsers();
   }, []);
 
+  const validateField = (name: string, value: string) => {
+    let error = '';
+    switch (name) {
+      case 'name':
+        if (!/^[a-zA-Z\s]+$/.test(value)) error = 'Name must contain only English letters.';
+        break;
+      case 'phone':
+        if (value && !/^\d{10}$/.test(value)) error = 'Phone number must be exactly 10 digits.';
+        break;
+      case 'email':
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) error = 'Invalid email address format.';
+        break;
+      case 'password':
+        if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/.test(value)) {
+          error = 'Min 8 chars, uppercase, lowercase, number, special character required.';
+        }
+        break;
+      case 'confirmPassword':
+        if (value !== formData.password) error = 'Passwords do not match.';
+        break;
+    }
+    setFormErrors(prev => ({ ...prev, [name]: error }));
+    return error === '';
+  };
+
+  useEffect(() => {
+    const emailValue = formData.email;
+    if (!emailValue || formErrors.email) {
+      setEmailCheck({ loading: false, available: null, msg: '' });
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setEmailCheck({ loading: true, available: null, msg: 'Checking availability...' });
+      try {
+        const isAvailable = await authService.checkEmail(emailValue);
+        setEmailCheck({
+          loading: false,
+          available: isAvailable,
+          msg: isAvailable ? 'Email is available' : 'Email is already taken'
+        });
+        if (!isAvailable) {
+           setFormErrors(prev => ({ ...prev, email: 'Email is already taken.' }));
+        }
+      } catch (err) {
+        setEmailCheck({ loading: false, available: null, msg: '' });
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [formData.email]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    validateField(name, value);
+    if (name === 'password' && formData.confirmPassword) {
+      validateField('confirmPassword', formData.confirmPassword);
+    }
+  };
+
   const handleToggleStatus = async (id: string) => {
     try {
       await authService.toggleUserStatus(id);
@@ -75,23 +141,24 @@ export default function AccountManagement() {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.username || !formData.password || !formData.role) {
-      toast.error('Name, Username, Password, and Role are required.');
+
+    // Validate all fields
+    const isNameValid = validateField('name', formData.name);
+    const isPhoneValid = validateField('phone', formData.phone);
+    const isEmailValid = validateField('email', formData.email);
+    const isPasswordValid = validateField('password', formData.password);
+    const isConfirmValid = validateField('confirmPassword', formData.confirmPassword);
+
+    if (!isNameValid || !isEmailValid || !isPasswordValid || !isConfirmValid || (formData.phone && !isPhoneValid) || emailCheck.available === false) {
+      toast.error('Please fix the errors in the form.');
       return;
     }
-    if (formData.password !== formData.confirmPassword) {
-      toast.error('Passwords do not match.');
-      return;
-    }
-    if (formData.password.length < 6) {
-      toast.error('Password must be at least 6 characters.');
-      return;
-    }
+
     setSubmitting(true);
     try {
       const created = await authService.createUser({
         name: formData.name,
-        email: `${formData.username}@stocksense.com`, // Auto-generated for backend requirements
+        email: formData.email,
         password: formData.password,
         role: formData.role,
         phone: formData.phone || undefined,
@@ -99,7 +166,9 @@ export default function AccountManagement() {
       // Optionally handle initial status if API allows setting isActive on creation
       setUsers((prev) => [created, ...prev]);
       setShowAddModal(false);
-      setFormData({ name: '', phone: '', username: '', password: '', confirmPassword: '', role: 'CASHIER', status: 'ACTIVE' });
+      setFormData({ name: '', phone: '', email: '', password: '', confirmPassword: '', role: 'CASHIER', status: 'ACTIVE' });
+      setFormErrors({});
+      setEmailCheck({ loading: false, available: null, msg: '' });
       toast.success('Account created successfully!');
     } catch (err: any) {
       const msg = err?.response?.data?.message || 'Failed to create user account.';
@@ -118,12 +187,29 @@ export default function AccountManagement() {
       role: user.role as 'CASHIER' | 'INVENTORY_MANAGER',
       isActive: user.isActive !== false,
     });
+    setFormErrors({});
     setShowEditModal(true);
+  };
+
+  const handleEditChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setEditFormData(prev => ({ ...prev, [name]: value }));
+    validateField(name, value);
   };
 
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser) return;
+
+    const isNameValid = validateField('name', editFormData.name);
+    const isPhoneValid = validateField('phone', editFormData.phone);
+    const isEmailValid = validateField('email', editFormData.email);
+
+    if (!isNameValid || !isEmailValid || (editFormData.phone && !isPhoneValid)) {
+      toast.error('Please fix the errors in the form.');
+      return;
+    }
+
     setSubmitting(true);
     try {
       const updated = await authService.updateUser(editingUser.id, editFormData);
@@ -142,7 +228,7 @@ export default function AccountManagement() {
     try {
       const res = await authService.resetPassword(passwordResetUser.id);
       if (res.emailSent) {
-        toast.success(`Password reset successful! An email has been sent to ${passwordResetUser.email}.`, { duration: 5000 });
+        toast.success(`Password reset successful. A new password has been generated and sent to ${passwordResetUser.email}`, { duration: 5000 });
       } else {
         toast.success(`Password reset successful! (SMTP not configured, so email skipped). New password is: ${res.newPassword}`, { duration: 10000 });
       }
@@ -370,7 +456,7 @@ export default function AccountManagement() {
                               <button 
                                 title="Reset Password"
                                 onClick={() => setPasswordResetUser(user)}
-                                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-[#0b8252] hover:bg-emerald-50 transition-colors"
                               >
                                 <span className="material-symbols-outlined text-[18px]">key</span>
                               </button>
@@ -426,21 +512,35 @@ export default function AccountManagement() {
                       <input 
                         type="text" 
                         required
+                        name="name"
                         value={formData.name}
-                        onChange={(e) => setFormData({...formData, name: e.target.value})}
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252]"
+                        onChange={handleChange}
+                        className={`w-full px-4 py-2.5 bg-slate-50 border ${formErrors.name ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-sm focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252]`}
                         placeholder="e.g. John Doe"
                       />
+                      {formErrors.name && <p className="text-[10px] text-rose-500 mt-1 font-medium">{formErrors.name}</p>}
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Phone Number</label>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Email Address <span className="text-rose-500">*</span></label>
                       <input 
-                        type="tel" 
-                        value={formData.phone}
-                        onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252]"
-                        placeholder="+94 77 XXX XXXX"
+                        type="email" 
+                        required
+                        name="email"
+                        value={formData.email}
+                        onChange={handleChange}
+                        className={`w-full px-4 py-2.5 bg-slate-50 border ${formErrors.email ? 'border-rose-500' : (emailCheck.available ? 'border-[#0b8252]' : 'border-slate-200')} rounded-xl text-sm focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252]`}
+                        placeholder="user@example.com"
                       />
+                      {formErrors.email ? (
+                         <p className="text-[10px] text-rose-500 mt-1 font-medium">{formErrors.email}</p>
+                      ) : (
+                         emailCheck.msg && (
+                           <p className={`text-[10px] mt-1 font-medium flex items-center gap-1 ${emailCheck.available ? 'text-[#0b8252]' : 'text-slate-500'}`}>
+                             {emailCheck.loading && <span className="material-symbols-outlined text-[12px] animate-spin">progress_activity</span>}
+                             {emailCheck.msg}
+                           </p>
+                         )
+                      )}
                     </div>
                   </div>
                 </div>
@@ -453,37 +553,60 @@ export default function AccountManagement() {
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Username <span className="text-rose-500">*</span></label>
-                      <input 
-                        type="text" 
-                        required
-                        value={formData.username}
-                        onChange={(e) => setFormData({...formData, username: e.target.value})}
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252]"
-                        placeholder="johndoe"
-                      />
-                    </div>
-                    <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Temporary Password <span className="text-rose-500">*</span></label>
-                      <input 
-                        type="password" 
-                        required
-                        value={formData.password}
-                        onChange={(e) => setFormData({...formData, password: e.target.value})}
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252]"
-                        placeholder="Min. 6 characters"
-                      />
+                      <div className="relative">
+                        <input 
+                          type={showPassword ? "text" : "password"}
+                          required
+                          name="password"
+                          value={formData.password}
+                          onChange={handleChange}
+                          className={`w-full pl-4 pr-10 py-2.5 bg-slate-50 border ${formErrors.password ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-sm focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252]`}
+                          placeholder="Min. 8 chars, 1 Uppercase, 1 Number, 1 Special"
+                        />
+                        <button 
+                          type="button" 
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">{showPassword ? 'visibility_off' : 'visibility'}</span>
+                        </button>
+                      </div>
+                      {formErrors.password && <p className="text-[10px] text-rose-500 mt-1 font-medium">{formErrors.password}</p>}
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Confirm Password <span className="text-rose-500">*</span></label>
+                      <div className="relative">
+                        <input 
+                          type={showConfirmPassword ? "text" : "password"}
+                          required
+                          name="confirmPassword"
+                          value={formData.confirmPassword}
+                          onChange={handleChange}
+                          className={`w-full pl-4 pr-10 py-2.5 bg-slate-50 border ${formErrors.confirmPassword ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-sm focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252]`}
+                          placeholder="Confirm password"
+                        />
+                        <button 
+                          type="button" 
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">{showConfirmPassword ? 'visibility_off' : 'visibility'}</span>
+                        </button>
+                      </div>
+                      {formErrors.confirmPassword && <p className="text-[10px] text-rose-500 mt-1 font-medium">{formErrors.confirmPassword}</p>}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Phone Number</label>
                       <input 
-                        type="password" 
-                        required
-                        value={formData.confirmPassword}
-                        onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252]"
-                        placeholder="Confirm temporary password"
+                        type="tel" 
+                        name="phone"
+                        value={formData.phone}
+                        onChange={handleChange}
+                        className={`w-full px-4 py-2.5 bg-slate-50 border ${formErrors.phone ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-sm focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252]`}
+                        placeholder="0771234567"
                       />
+                      {formErrors.phone && <p className="text-[10px] text-rose-500 mt-1 font-medium">{formErrors.phone}</p>}
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Account Status</label>
@@ -635,7 +758,7 @@ export default function AccountManagement() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col border border-slate-200">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-[#0b8252]/10 text-[#0b8252] flex items-center justify-center">
                   <span className="material-symbols-outlined">edit</span>
                 </div>
                 <div>
@@ -655,7 +778,7 @@ export default function AccountManagement() {
               <form id="edit-employee-form" onSubmit={handleUpdateUser} className="space-y-6">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#0b8252]"></span>
                     Personal & Account Details
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -664,36 +787,51 @@ export default function AccountManagement() {
                       <input 
                         type="text" 
                         required
+                        name="name"
                         value={editFormData.name}
-                        onChange={(e) => setEditFormData({...editFormData, name: e.target.value})}
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                        onChange={handleEditChange}
+                        className={`w-full px-4 py-2.5 bg-slate-50 border ${formErrors.name ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-sm focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252]`}
                       />
+                      {formErrors.name && <p className="text-[10px] text-rose-500 mt-1 font-medium">{formErrors.name}</p>}
                     </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Email Address <span className="text-rose-500">*</span></label>
+                      <input 
+                        type="email" 
+                        required
+                        name="email"
+                        value={editFormData.email}
+                        onChange={handleEditChange}
+                        className={`w-full px-4 py-2.5 bg-slate-50 border ${formErrors.email ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-sm focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252]`}
+                      />
+                      {formErrors.email && <p className="text-[10px] text-rose-500 mt-1 font-medium">{formErrors.email}</p>}
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#0b8252]"></span>
+                    Account Details
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Phone Number</label>
                       <input 
                         type="tel" 
+                        name="phone"
                         value={editFormData.phone}
-                        onChange={(e) => setEditFormData({...editFormData, phone: e.target.value})}
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                        onChange={handleEditChange}
+                        className={`w-full px-4 py-2.5 bg-slate-50 border ${formErrors.phone ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-sm focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252]`}
                       />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Email (Username) <span className="text-rose-500">*</span></label>
-                      <input 
-                        type="email" 
-                        required
-                        value={editFormData.email}
-                        onChange={(e) => setEditFormData({...editFormData, email: e.target.value})}
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
-                      />
+                      {formErrors.phone && <p className="text-[10px] text-rose-500 mt-1 font-medium">{formErrors.phone}</p>}
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Account Status</label>
                       <select 
                         value={editFormData.isActive ? 'ACTIVE' : 'INACTIVE'}
                         onChange={(e) => setEditFormData({...editFormData, isActive: e.target.value === 'ACTIVE'})}
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 cursor-pointer"
+                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252] cursor-pointer"
                       >
                         <option value="ACTIVE">Active (Can Login)</option>
                         <option value="INACTIVE">Inactive (Suspended)</option>
@@ -704,13 +842,13 @@ export default function AccountManagement() {
 
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#0b8252]"></span>
                     Assigned Role
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <label className={`relative flex flex-col p-4 cursor-pointer rounded-2xl border-2 transition-all ${
                       editFormData.role === 'CASHIER' 
-                        ? 'border-blue-600 bg-blue-50/50' 
+                        ? 'border-[#0b8252] bg-[#0b8252]/5' 
                         : 'border-slate-200 bg-white hover:border-slate-300'
                     }`}>
                       <input 
@@ -726,7 +864,7 @@ export default function AccountManagement() {
                           <span className="material-symbols-outlined">point_of_sale</span>
                         </div>
                         <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                          editFormData.role === 'CASHIER' ? 'border-blue-600 bg-blue-600' : 'border-slate-300'
+                          editFormData.role === 'CASHIER' ? 'border-[#0b8252] bg-[#0b8252]' : 'border-slate-300'
                         }`}>
                           {editFormData.role === 'CASHIER' && <span className="material-symbols-outlined text-[14px] text-white">check</span>}
                         </span>
@@ -736,7 +874,7 @@ export default function AccountManagement() {
 
                     <label className={`relative flex flex-col p-4 cursor-pointer rounded-2xl border-2 transition-all ${
                       editFormData.role === 'INVENTORY_MANAGER' 
-                        ? 'border-blue-600 bg-blue-50/50' 
+                        ? 'border-[#0b8252] bg-[#0b8252]/5' 
                         : 'border-slate-200 bg-white hover:border-slate-300'
                     }`}>
                       <input 
@@ -752,7 +890,7 @@ export default function AccountManagement() {
                           <span className="material-symbols-outlined">inventory_2</span>
                         </div>
                         <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                          editFormData.role === 'INVENTORY_MANAGER' ? 'border-blue-600 bg-blue-600' : 'border-slate-300'
+                          editFormData.role === 'INVENTORY_MANAGER' ? 'border-[#0b8252] bg-[#0b8252]' : 'border-slate-300'
                         }`}>
                           {editFormData.role === 'INVENTORY_MANAGER' && <span className="material-symbols-outlined text-[14px] text-white">check</span>}
                         </span>
@@ -776,10 +914,10 @@ export default function AccountManagement() {
                 type="submit"
                 form="edit-employee-form"
                 disabled={submitting}
-                className="px-6 py-2.5 rounded-xl font-bold text-sm bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2"
+                className="px-6 py-2.5 rounded-xl font-bold text-sm bg-[#0b8252] text-white hover:bg-[#096b43] transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2"
               >
                 {submitting && <span className="material-symbols-outlined animate-spin text-[18px]">progress_activity</span>}
-                {submitting ? 'Updating...' : 'Update Account'}
+                {submitting ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </div>
@@ -790,13 +928,13 @@ export default function AccountManagement() {
       {passwordResetUser && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden p-6 text-center border border-slate-200 transform transition-all scale-100">
-            <div className="mx-auto w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mb-4 border border-indigo-100">
+            <div className="mx-auto w-16 h-16 bg-emerald-50 text-[#0b8252] rounded-full flex items-center justify-center mb-4 border border-emerald-100">
               <span className="material-symbols-outlined text-[32px]">lock_reset</span>
             </div>
             <h3 className="text-xl font-black text-slate-900 tracking-tight mb-2">Reset Password?</h3>
             <p className="text-sm text-slate-500 mb-6 leading-relaxed">
-              Are you sure you want to reset the password for <strong className="text-slate-700">{passwordResetUser.name}</strong>? 
-              A new randomly generated password will be sent to their email ({passwordResetUser.email}) and updated in the database.
+              Are you sure you want to reset <strong className="text-slate-700">{passwordResetUser.name}'s</strong> password?{' '}
+              A new randomly generated password will be sent to <strong className="text-slate-700">{passwordResetUser.email}</strong>, and the database will be updated with the new password.
             </p>
             <div className="flex gap-3 mt-4">
               <button
@@ -807,7 +945,7 @@ export default function AccountManagement() {
               </button>
               <button
                 onClick={confirmResetPassword}
-                className="flex-1 px-4 py-2.5 rounded-xl font-bold text-sm text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm"
+                className="flex-1 px-4 py-2.5 rounded-xl font-bold text-sm text-white bg-[#0b8252] hover:bg-[#096b43] transition-colors shadow-sm"
               >
                 Yes, Reset
               </button>

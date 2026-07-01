@@ -14,18 +14,83 @@ export const createBill = async (req: AuthRequest, res: Response): Promise<void>
     }
 
     const {
-      subtotal,
-      totalDiscount,
-      totalBill,
       paymentMethod,
-      totalQty,
       draft = false,
       items,
-      resumeDraftId
+      resumeDraftId,
+      totalDiscount: requestedTotalDiscount,
+      paidAmount,
+      changeAmount
     } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       res.status(400).json({ success: false, message: 'Bill must contain at least one item.' });
+      return;
+    }
+
+    // 1. Fetch system settings for stock rules
+    const settings = await prisma.systemSetting.findUnique({
+      where: { key: 'STOCK_RULES' }
+    });
+    const allowNegativeStock = settings?.value ? (settings.value as any).allowNegativeStock : false;
+
+    // 2. Fetch all products to verify prices and stock
+    const skus = items.map((i: any) => i.sku);
+    const products = await prisma.product.findMany({
+      where: { sku: { in: skus } }
+    });
+    const productMap = new Map(products.map(p => [p.sku, p]));
+
+    let calculatedSubtotal = 0;
+    let calculatedTotalQty = 0;
+    const verifiedItems: any[] = [];
+
+    for (const item of items) {
+      const product = productMap.get(item.sku);
+      if (!product) {
+        res.status(400).json({ success: false, message: `Product with SKU ${item.sku} not found.` });
+        return;
+      }
+
+      const qty = parseInt(item.qty);
+      if (isNaN(qty) || qty <= 0) {
+        res.status(400).json({ success: false, message: `Invalid quantity for SKU ${item.sku}.` });
+        return;
+      }
+
+      // Check stock if not draft and negative stock is not allowed
+      if (!draft && !allowNegativeStock) {
+        if (product.currentStock < qty) {
+          res.status(400).json({ success: false, message: `Insufficient stock for ${product.name}. Available: ${product.currentStock}` });
+          return;
+        }
+      }
+
+      // Enforce the backend's selling price
+      const unitPrice = product.sellingPrice;
+      const discountValue = item.discountValue ? parseFloat(item.discountValue) : 0;
+      
+      // Calculate item total (price * qty * (1 - discount%))
+      const itemTotal = (unitPrice * qty) * (1 - (discountValue / 100));
+
+      calculatedSubtotal += (unitPrice * qty);
+      calculatedTotalQty += qty;
+
+      verifiedItems.push({
+        sku: item.sku,
+        qty,
+        unitPrice,
+        total: itemTotal,
+        discountId: item.discountId || null,
+        discountValue
+      });
+    }
+
+    const finalTotalDiscount = parseFloat(requestedTotalDiscount || 0);
+    const calculatedTotalBill = calculatedSubtotal - finalTotalDiscount;
+
+    if (calculatedTotalBill < 0) {
+      res.status(400).json({ success: false, message: 'Total bill cannot be negative.' });
       return;
     }
 
@@ -60,21 +125,16 @@ export const createBill = async (req: AuthRequest, res: Response): Promise<void>
         data: {
           billNumber,
           cashierId,
-          subtotal: parseFloat(subtotal),
-          totalDiscount: parseFloat(totalDiscount || 0),
-          totalBill: parseFloat(totalBill),
+          subtotal: calculatedSubtotal,
+          totalDiscount: finalTotalDiscount,
+          totalBill: calculatedTotalBill,
           paymentMethod: (paymentMethod as PaymentMethod) || PaymentMethod.CASH,
-          totalQty: parseInt(totalQty),
+          totalQty: calculatedTotalQty,
           draft,
+          paidAmount: paidAmount !== undefined ? parseFloat(paidAmount) : null,
+          changeAmount: changeAmount !== undefined ? parseFloat(changeAmount) : null,
           billItems: {
-            create: items.map((item: any) => ({
-              sku: item.sku,
-              qty: parseInt(item.qty),
-              unitPrice: parseFloat(item.unitPrice),
-              total: parseFloat(item.total),
-              discountId: item.discountId || null,
-              discountValue: item.discountValue ? parseFloat(item.discountValue) : 0
-            }))
+            create: verifiedItems
           }
         },
         include: {
@@ -153,17 +213,13 @@ export const createBill = async (req: AuthRequest, res: Response): Promise<void>
 // Get completed sales history for the current cashier
 export const getSalesHistory = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const cashierId = req.user?.id;
-    if (!cashierId) {
-      res.status(401).json({ success: false, message: 'Unauthorized.' });
-      return;
+    const whereClause: any = { draft: false };
+    if (req.user?.role !== 'ADMIN') {
+      whereClause.cashierId = req.user?.id;
     }
 
     const bills = await prisma.bill.findMany({
-      where: {
-        cashierId,
-        draft: false
-      },
+      where: whereClause,
       include: {
         billItems: {
           include: {

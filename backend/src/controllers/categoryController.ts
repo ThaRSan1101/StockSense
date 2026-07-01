@@ -23,13 +23,25 @@ export const getCategories = async (_req: Request, res: Response): Promise<void>
 export const createCategory = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, description, categoryImageUrl } = req.body;
-    if (!name) {
-      res.status(400).json({ success: false, message: 'Name is required' });
+    const cleanName = name?.trim();
+    const cleanDescription = description?.trim() || null;
+    const cleanImageUrl = categoryImageUrl?.trim() || null;
+
+    if (!cleanName) {
+      res.status(400).json({ success: false, message: 'Category name is required' });
+      return;
+    }
+    if (cleanName.length > 50) {
+      res.status(400).json({ success: false, message: 'Category name must be 50 characters or less.' });
+      return;
+    }
+    if (cleanDescription && cleanDescription.length > 250) {
+      res.status(400).json({ success: false, message: 'Category description must be 250 characters or less.' });
       return;
     }
 
     const newCategory = await prisma.category.create({
-      data: { name, description, categoryImageUrl }
+      data: { name: cleanName, description: cleanDescription, categoryImageUrl: cleanImageUrl }
     });
 
     res.status(201).json({ success: true, data: newCategory });
@@ -55,12 +67,29 @@ export const updateCategory = async (req: Request, res: Response): Promise<void>
       return;
     }
 
+    const cleanName = name !== undefined ? name?.trim() : undefined;
+    const cleanDescription = description !== undefined ? description?.trim() : undefined;
+    const cleanImageUrl = categoryImageUrl !== undefined ? categoryImageUrl?.trim() : undefined;
+
+    if (cleanName !== undefined && !cleanName) {
+      res.status(400).json({ success: false, message: 'Category name cannot be empty.' });
+      return;
+    }
+    if (cleanName !== undefined && cleanName.length > 50) {
+      res.status(400).json({ success: false, message: 'Category name must be 50 characters or less.' });
+      return;
+    }
+    if (cleanDescription !== undefined && cleanDescription && cleanDescription.length > 250) {
+      res.status(400).json({ success: false, message: 'Category description must be 250 characters or less.' });
+      return;
+    }
+
     const updatedCategory = await prisma.category.update({
       where: { id },
       data: {
-        name,
-        description,
-        categoryImageUrl,
+        name: cleanName,
+        description: cleanDescription,
+        categoryImageUrl: cleanImageUrl,
         isActive: isActive !== undefined ? isActive : undefined
       }
     });
@@ -89,13 +118,24 @@ export const updateCategory = async (req: Request, res: Response): Promise<void>
 export const createSubCategory = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, description, categoryId } = req.body;
-    if (!name || !categoryId) {
+    const cleanName = name?.trim();
+    const cleanDescription = description?.trim() || null;
+
+    if (!cleanName || !categoryId) {
       res.status(400).json({ success: false, message: 'Name and categoryId are required' });
+      return;
+    }
+    if (cleanName.length > 50) {
+      res.status(400).json({ success: false, message: 'Subcategory name must be 50 characters or less.' });
+      return;
+    }
+    if (cleanDescription && cleanDescription.length > 250) {
+      res.status(400).json({ success: false, message: 'Subcategory description must be 250 characters or less.' });
       return;
     }
 
     const newSubCategory = await prisma.subCategory.create({
-      data: { name, description, categoryId }
+      data: { name: cleanName, description: cleanDescription, categoryId }
     });
 
     res.status(201).json({ success: true, data: newSubCategory });
@@ -121,12 +161,28 @@ export const updateSubCategory = async (req: Request, res: Response): Promise<vo
       return;
     }
 
+    const cleanName = name !== undefined ? name?.trim() : undefined;
+    const cleanDescription = description !== undefined ? description?.trim() : undefined;
+
+    if (cleanName !== undefined && !cleanName) {
+      res.status(400).json({ success: false, message: 'Subcategory name cannot be empty.' });
+      return;
+    }
+    if (cleanName !== undefined && cleanName.length > 50) {
+      res.status(400).json({ success: false, message: 'Subcategory name must be 50 characters or less.' });
+      return;
+    }
+    if (cleanDescription !== undefined && cleanDescription && cleanDescription.length > 250) {
+      res.status(400).json({ success: false, message: 'Subcategory description must be 250 characters or less.' });
+      return;
+    }
+
     const updatedSubCategory = await prisma.subCategory.update({
       where: { id },
       data: {
-        name,
-        description,
-        categoryId,
+        name: cleanName,
+        description: cleanDescription,
+        categoryId: categoryId !== undefined ? categoryId : undefined,
         isActive: isActive !== undefined ? isActive : undefined
       }
     });

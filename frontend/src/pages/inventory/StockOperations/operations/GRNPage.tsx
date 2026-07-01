@@ -280,11 +280,36 @@ export default function GRNPage() {
   const handleSubmitGRN = async (e: React.FormEvent, andPrint = false) => {
     e.preventDefault();
     
-    // Validate rows
-    const invalidRow = formItems.find(item => !item.productName || item.receivedQty < 0 || item.orderedQty < 0);
-    if (invalidRow) {
-      triggerToast('Please ensure all items have valid quantities and products selected.');
+    if (notes && notes.length > 500) {
+      triggerToast('Notes must be 500 characters or less.');
       return;
+    }
+
+    // Validate rows
+    for (let i = 0; i < formItems.length; i++) {
+      const item = formItems[i];
+      if (!item.productName) {
+        triggerToast(`Please select a product for line ${i + 1}.`);
+        return;
+      }
+      const qty = Number(item.receivedQty);
+      if (isNaN(qty) || qty <= 0 || !Number.isInteger(qty)) {
+        triggerToast(`Added quantity for "${item.productName}" must be a positive integer.`);
+        return;
+      }
+      const cost = Number(item.unitCost);
+      if (isNaN(cost) || cost <= 0) {
+        triggerToast(`Unit cost for "${item.productName}" must be positive.`);
+        return;
+      }
+      if (item.mfgDate && item.expiryDate) {
+        const mfg = new Date(item.mfgDate);
+        const exp = new Date(item.expiryDate);
+        if (exp <= mfg) {
+          triggerToast(`Expiry date must be after manufacturing date for "${item.productName}".`);
+          return;
+        }
+      }
     }
 
     try {

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../config/prisma.js';
 import { AdjustmentReason } from '@prisma/client';
+import { AuthRequest } from '../middlewares/authMiddleware.js';
 
 // Helper reason mappers
 const mapFrontendReasonToDb = (reason: string): AdjustmentReason => {
@@ -82,18 +83,52 @@ export const getGRNs = async (_req: Request, res: Response): Promise<void> => {
 };
 
 // Create a new GRN
-export const createGRN = async (req: Request, res: Response): Promise<void> => {
+export const createGRN = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { supplierName, notes, items } = req.body;
 
-    if (!supplierName || !items || !Array.isArray(items) || items.length === 0) {
+    const cleanSupplierName = supplierName?.trim();
+    const cleanNotes = notes?.trim() || null;
+
+    if (!cleanSupplierName || !items || !Array.isArray(items) || items.length === 0) {
       res.status(400).json({ success: false, message: 'Supplier name and items are required' });
       return;
     }
 
+    if (cleanNotes && cleanNotes.length > 500) {
+      res.status(400).json({ success: false, message: 'Notes must be 500 characters or less.' });
+      return;
+    }
+
+    // Validate items payload
+    for (const item of items) {
+      if (!item.sku) {
+        res.status(400).json({ success: false, message: 'SKU is required for all items' });
+        return;
+      }
+      const qty = Number(item.receivedQty);
+      if (isNaN(qty) || qty <= 0 || !Number.isInteger(qty)) {
+        res.status(400).json({ success: false, message: `Received quantity for SKU ${item.sku} must be a positive integer.` });
+        return;
+      }
+      const cost = Number(item.unitCost);
+      if (isNaN(cost) || cost <= 0) {
+        res.status(400).json({ success: false, message: `Unit cost for SKU ${item.sku} must be a positive number.` });
+        return;
+      }
+      if (item.mfgDate && item.expiryDate) {
+        const mfg = new Date(item.mfgDate);
+        const exp = new Date(item.expiryDate);
+        if (exp <= mfg) {
+          res.status(400).json({ success: false, message: `Expiry date must be after manufacturing date for SKU ${item.sku}.` });
+          return;
+        }
+      }
+    }
+
     // Find supplier
     let supplier = await prisma.supplier.findFirst({
-      where: { name: { equals: supplierName, mode: 'insensitive' } }
+      where: { name: { equals: cleanSupplierName, mode: 'insensitive' } }
     });
     if (!supplier) {
       supplier = await prisma.supplier.findFirst();
@@ -103,12 +138,9 @@ export const createGRN = async (req: Request, res: Response): Promise<void> => {
       }
     }
 
-    // Find operator
-    const defaultUser = await prisma.user.findFirst({
-      where: { role: 'INVENTORY_MANAGER' }
-    }) || await prisma.user.findFirst();
-    if (!defaultUser) {
-      res.status(400).json({ success: false, message: 'No users registered in database' });
+    const operatorId = req.user?.id;
+    if (!operatorId) {
+      res.status(401).json({ success: false, message: 'Unauthorized. User session not found.' });
       return;
     }
 
@@ -120,8 +152,8 @@ export const createGRN = async (req: Request, res: Response): Promise<void> => {
         data: {
           grnId,
           supplierId: supplier!.id,
-          operatorId: defaultUser.id,
-          notes: notes || null
+          operatorId: operatorId,
+          notes: cleanNotes
         }
       });
 
@@ -235,7 +267,7 @@ export const getAdjustments = async (_req: Request, res: Response): Promise<void
 };
 
 // Create a new Adjustment
-export const createAdjustment = async (req: Request, res: Response): Promise<void> => {
+export const createAdjustment = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { sku, qtyChanged, reason } = req.body;
 
@@ -253,25 +285,32 @@ export const createAdjustment = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    // Find operator
-    const defaultUser = await prisma.user.findFirst({
-      where: { role: 'INVENTORY_MANAGER' }
-    }) || await prisma.user.findFirst();
-    if (!defaultUser) {
-      res.status(400).json({ success: false, message: 'No users registered in database' });
+    const adjustedById = req.user?.id;
+    if (!adjustedById) {
+      res.status(401).json({ success: false, message: 'Unauthorized. User session not found.' });
       return;
     }
 
-    const finalQuantity = Math.max(0, product.currentStock + Number(qtyChanged));
+    const change = Number(qtyChanged);
+    if (isNaN(change) || !Number.isInteger(change) || change === 0) {
+      res.status(400).json({ success: false, message: 'Quantity changed must be a non-zero integer.' });
+      return;
+    }
+
+    const finalQuantity = product.currentStock + change;
+    if (finalQuantity < 0) {
+      res.status(400).json({ success: false, message: `Cannot adjust quantity. Final quantity would be negative (${finalQuantity}).` });
+      return;
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       // 1. Create StockAdjustment
       const adj = await tx.stockAdjustment.create({
         data: {
           sku,
-          qtyChanged: Number(qtyChanged),
+          qtyChanged: change,
           reason: mapFrontendReasonToDb(reason),
-          adjustedById: defaultUser.id,
+          adjustedById: adjustedById,
           finalQuantity
         },
         include: {

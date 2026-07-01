@@ -15,15 +15,26 @@ export const getBrands = async (_req: Request, res: Response): Promise<void> => 
 export const createBrand = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, description } = req.body;
-    if (!name) {
-      res.status(400).json({ success: false, message: 'Name is required' });
+    const cleanName = name?.trim();
+    const cleanDescription = description?.trim() || null;
+
+    if (!cleanName) {
+      res.status(400).json({ success: false, message: 'Brand name is required' });
+      return;
+    }
+    if (cleanName.length > 50) {
+      res.status(400).json({ success: false, message: 'Brand name must be 50 characters or less.' });
+      return;
+    }
+    if (cleanDescription && cleanDescription.length > 250) {
+      res.status(400).json({ success: false, message: 'Brand description must be 250 characters or less.' });
       return;
     }
 
     const newBrand = await prisma.brand.create({
       data: { 
-        name, 
-        description: description || null, 
+        name: cleanName, 
+        description: cleanDescription, 
         state: BrandState.ACTIVE 
       }
     });
@@ -50,11 +61,27 @@ export const updateBrand = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
+    const cleanName = name !== undefined ? name?.trim() : undefined;
+    const cleanDescription = description !== undefined ? description?.trim() : undefined;
+
+    if (cleanName !== undefined && !cleanName) {
+      res.status(400).json({ success: false, message: 'Brand name cannot be empty.' });
+      return;
+    }
+    if (cleanName !== undefined && cleanName.length > 50) {
+      res.status(400).json({ success: false, message: 'Brand name must be 50 characters or less.' });
+      return;
+    }
+    if (cleanDescription !== undefined && cleanDescription && cleanDescription.length > 250) {
+      res.status(400).json({ success: false, message: 'Brand description must be 250 characters or less.' });
+      return;
+    }
+
     const updatedBrand = await prisma.brand.update({
       where: { id },
       data: {
-        name: name !== undefined ? name : undefined,
-        description: description !== undefined ? description : undefined,
+        name: cleanName,
+        description: cleanDescription,
         state: state !== undefined ? state : undefined
       }
     });

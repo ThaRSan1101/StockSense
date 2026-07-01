@@ -40,6 +40,7 @@ export default function Settings() {
 
   const [rules, setRules] = useState<StockRulesConfig>(DEFAULT_RULES);
   const [applyToAll, setApplyToAll] = useState(false);
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -61,7 +62,31 @@ export default function Settings() {
     fetchSettings();
   }, []);
 
+  const validateRules = () => {
+    const newErrors: { [key: string]: string } = {};
+    if (!/^\d+$/.test(rules.defaultReorderLevel)) {
+      newErrors.defaultReorderLevel = 'Must be a valid number';
+    }
+    if (!/^\d+$/.test(rules.minimumStockThreshold)) {
+      newErrors.minimumStockThreshold = 'Must be a valid number';
+    }
+    // If maximumStockLimit is supposed to be a number unless it's "No limit", we can check it
+    if (rules.maximumStockLimit !== 'No limit' && !/^\d+$/.test(rules.maximumStockLimit)) {
+      newErrors.maximumStockLimit = 'Must be a valid number or "No limit"';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const saveSettings = async () => {
+    if (['Stock Rules', 'Alerts'].includes(activeTab)) {
+      if (!validateRules()) {
+        toast.error('Please fix the errors in the form.');
+        return;
+      }
+    }
+
     try {
       await api.put('/settings/STOCK_RULES', { value: rules });
       
@@ -72,9 +97,9 @@ export default function Settings() {
       } else {
         toast.success("Settings saved successfully!");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to save settings:", error);
-      toast.error("Failed to save settings to server.");
+      // toast.error is handled globally in axiosInstance.ts
     }
   };
 
@@ -146,7 +171,7 @@ export default function Settings() {
                     <SettingsAccount />
                   )}
                   {activeTab === 'Stock Rules' && (
-                    <SettingsStockRules rules={rules} onChange={(updated) => setRules(updated)} />
+                    <SettingsStockRules rules={rules} errors={errors} onChange={(updated) => setRules(updated)} />
                   )}
                   {activeTab === 'Alerts' && (
                     <SettingsAlerts rules={rules} onChange={(updated) => setRules(updated)} />

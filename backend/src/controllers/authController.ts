@@ -3,7 +3,7 @@ import { Request, Response } from 'express'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt.js'
-import { sendPasswordResetEmail } from '../utils/email.js'
+import { sendPasswordResetEmail, sendAccountCreatedEmail, sendStatusToggleEmail, sendAccountUpdatedEmail, AccountChange } from '../utils/email.js'
 import { AuthRequest } from '../middlewares/authMiddleware.js'
 import { prisma } from '../config/prisma.js'
 
@@ -14,9 +14,30 @@ const loginSchema = z.object({
 })
 
 const updateProfileSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  email: z.string().email('Invalid email address'),
-  phone: z.string().nullable().optional()
+  name: z.string().min(1, 'Name is required').regex(/^[a-zA-Z\s]+$/, 'Name must contain only English letters'),
+  email: z.string().email('Invalid email address format'),
+  phone: z.string().regex(/^\d{10}$/, 'Phone number must be exactly 10 digits').optional().nullable()
+})
+
+const updatePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword: z.string().regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/, 'Password must be at least 8 characters long, and include uppercase, lowercase, number and special character'),
+})
+
+const createUserSchema = z.object({
+  name: z.string().min(1, 'Name is required').regex(/^[a-zA-Z\s]+$/, 'Name must contain only English letters'),
+  email: z.string().email('Invalid email address format'),
+  password: z.string().regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/, 'Password must be at least 8 characters long, and include uppercase, lowercase, number and special character'),
+  role: z.enum(['CASHIER', 'INVENTORY_MANAGER']),
+  phone: z.string().regex(/^\d{10}$/, 'Phone number must be exactly 10 digits').optional()
+})
+
+const updateUserSchema = z.object({
+  name: z.string().min(1, 'Name is required').regex(/^[a-zA-Z\s]+$/, 'Name must contain only English letters').optional(),
+  email: z.string().email('Invalid email address format').optional(),
+  phone: z.string().regex(/^\d{10}$/, 'Phone number must be exactly 10 digits').optional().nullable(),
+  role: z.enum(['CASHIER', 'INVENTORY_MANAGER']).optional(),
+  isActive: z.boolean().optional()
 })
 
 const REFRESH_TOKEN_COOKIE = 'stocksense_refresh'
@@ -155,7 +176,8 @@ export async function updateProfile(req: AuthRequest, res: Response): Promise<vo
       return
     }
 
-    const { name, email, phone } = parsed.data
+    const { email, phone } = parsed.data
+    const name = parsed.data.name.trim().replace(/\s+/g, ' ')
     const userId = req.user!.id
 
     const existing = await prisma.user.findFirst({
@@ -191,20 +213,54 @@ export async function updateProfile(req: AuthRequest, res: Response): Promise<vo
   }
 }
 
+// ─── PUT /api/auth/profile/password ───────────────────────────────────────
+export async function updatePassword(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const parsed = updatePasswordSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ success: false, message: parsed.error.issues[0].message })
+      return
+    }
+
+    const { currentPassword, newPassword } = parsed.data
+    const userId = req.user!.id
+
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user) {
+      res.status(404).json({ success: false, message: 'User not found.' })
+      return
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash)
+    if (!isMatch) {
+      res.status(400).json({ success: false, message: 'Incorrect current password.' })
+      return
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 12)
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: hashedPassword }
+    })
+
+    res.status(200).json({ success: true, message: 'Password updated successfully.' })
+  } catch (err) {
+    console.error('[updatePassword error]', err)
+    res.status(500).json({ success: false, message: 'Internal server error.' })
+  }
+}
+
 // ─── POST /api/auth/users (Admin only — create cashier/manager) ──────
 export async function createUser(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const { name, email, password, role, phone } = req.body
-
-    if (!name || !email || !password || !role) {
-      res.status(400).json({ success: false, message: 'name, email, password, and role are required.' })
+    const parsed = createUserSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ success: false, message: parsed.error.issues[0].message })
       return
     }
 
-    if (!['CASHIER', 'INVENTORY_MANAGER'].includes(role)) {
-      res.status(400).json({ success: false, message: 'Role must be CASHIER or INVENTORY_MANAGER.' })
-      return
-    }
+    const { name, email, password, role, phone } = parsed.data
 
     const existing = await prisma.user.findUnique({ where: { email } })
     if (existing) {
@@ -214,10 +270,13 @@ export async function createUser(req: AuthRequest, res: Response): Promise<void>
 
     const hashedPassword = await bcrypt.hash(password, 12)
 
+    // Sanitize name before saving
+    const sanitizedName = name.trim().replace(/\s+/g, ' ')
+
     const newUser = await prisma.user.create({
       data: {
-        name,
-        email,
+        name: sanitizedName,
+        email: email.toLowerCase(),
         passwordHash: hashedPassword,
         role,
         phone,
@@ -225,9 +284,32 @@ export async function createUser(req: AuthRequest, res: Response): Promise<void>
       select: { id: true, name: true, email: true, role: true, phone: true, isActive: true, createdAt: true },
     })
 
+    try {
+      await sendAccountCreatedEmail(email.toLowerCase(), password, sanitizedName, role)
+    } catch (err) {
+      console.error('[Email Send Error]', err)
+    }
+
     res.status(201).json({ success: true, message: 'User created successfully.', data: newUser })
   } catch (err) {
     console.error('[createUser error]', err)
+    res.status(500).json({ success: false, message: 'Internal server error.' })
+  }
+}
+
+// ─── GET /api/auth/users/check-email (Admin only) ──────────────
+export async function checkEmail(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const email = req.query.email as string
+    if (!email) {
+      res.status(400).json({ success: false, message: 'Email is required' })
+      return
+    }
+
+    const existing = await prisma.user.findUnique({ where: { email } })
+    res.status(200).json({ success: true, available: !existing })
+  } catch (err) {
+    console.error('[checkEmail error]', err)
     res.status(500).json({ success: false, message: 'Internal server error.' })
   }
 }
@@ -285,6 +367,12 @@ export async function toggleUserStatus(req: AuthRequest, res: Response): Promise
       select: { id: true, name: true, email: true, role: true, isActive: true },
     })
 
+    try {
+      await sendStatusToggleEmail(updated.email, updated.name, updated.isActive)
+    } catch (err) {
+      console.error('[Email Send Error]', err)
+    }
+
     res.status(200).json({ success: true, data: updated })
   } catch (err) {
     console.error('[toggleUserStatus error]', err)
@@ -296,7 +384,16 @@ export async function toggleUserStatus(req: AuthRequest, res: Response): Promise
 export async function updateUser(req: AuthRequest, res: Response): Promise<void> {
   try {
     const id = req.params.id as string
-    const { name, email, phone, role, isActive } = req.body
+
+    // Validate & sanitize input
+    const parsed = updateUserSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ success: false, message: parsed.error.issues[0].message })
+      return
+    }
+
+    const { email, phone, role, isActive } = parsed.data
+    const name = parsed.data.name ? parsed.data.name.trim().replace(/\s+/g, ' ') : undefined
 
     const user = await prisma.user.findUnique({ where: { id } })
     if (!user) {
@@ -304,25 +401,66 @@ export async function updateUser(req: AuthRequest, res: Response): Promise<void>
       return
     }
 
-    if (email && email !== user.email) {
-      const existing = await prisma.user.findUnique({ where: { email } })
+    if (email && email.toLowerCase() !== user.email) {
+      const existing = await prisma.user.findUnique({ where: { email: email.toLowerCase() } })
       if (existing) {
         res.status(409).json({ success: false, message: 'Email already in use.' })
         return
       }
     }
 
+    // Determine final values
+    const finalName = name !== undefined ? name : user.name
+    const finalEmail = email !== undefined ? email.toLowerCase() : user.email
+    const finalPhone = phone !== undefined ? phone : user.phone
+    const finalRole = role !== undefined ? role : user.role
+    const finalIsActive = isActive !== undefined ? isActive : user.isActive
+
     const updated = await prisma.user.update({
       where: { id },
       data: {
-        name: name !== undefined ? name : user.name,
-        email: email !== undefined ? email : user.email,
-        phone: phone !== undefined ? phone : user.phone,
-        role: role !== undefined ? role : user.role,
-        isActive: isActive !== undefined ? isActive : user.isActive,
+        name: finalName,
+        email: finalEmail,
+        phone: finalPhone,
+        role: finalRole,
+        isActive: finalIsActive,
       },
       select: { id: true, name: true, email: true, role: true, phone: true, isActive: true, createdAt: true },
     })
+
+    // Build change list for notification email
+    const roleLabel = (r: string) => r === 'INVENTORY_MANAGER' ? 'Manager' : r === 'CASHIER' ? 'Cashier' : r
+    const changes: AccountChange[] = []
+
+    if (finalName !== user.name) {
+      changes.push({ field: 'Name', oldValue: user.name, newValue: finalName })
+    }
+    if (finalEmail !== user.email) {
+      changes.push({ field: 'Email', oldValue: user.email, newValue: finalEmail })
+    }
+    if ((finalPhone || '') !== (user.phone || '')) {
+      changes.push({ field: 'Phone', oldValue: user.phone || '(not set)', newValue: finalPhone || '(not set)' })
+    }
+    if (finalRole !== user.role) {
+      changes.push({ field: 'Role', oldValue: roleLabel(user.role), newValue: roleLabel(finalRole) })
+    }
+    if (finalIsActive !== user.isActive) {
+      changes.push({ field: 'Account Status', oldValue: user.isActive ? 'Active' : 'Inactive', newValue: finalIsActive ? 'Active' : 'Inactive' })
+    }
+
+    // Send notification email if anything changed
+    if (changes.length > 0) {
+      try {
+        // Send to the user's latest email (in case email itself changed, send to both)
+        await sendAccountUpdatedEmail(updated.email, updated.name, changes)
+        // If email was changed, also notify the old email
+        if (finalEmail !== user.email) {
+          await sendAccountUpdatedEmail(user.email, user.name, changes)
+        }
+      } catch (err) {
+        console.error('[Email Send Error]', err)
+      }
+    }
 
     res.status(200).json({ success: true, message: 'User updated successfully.', data: updated })
   } catch (err) {

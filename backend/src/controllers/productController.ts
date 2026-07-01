@@ -41,17 +41,106 @@ export const createProduct = async (req: Request, res: Response): Promise<void> 
       variants, status
     } = req.body;
 
-    if (!name || !categoryId || !brandId || !supplierId) {
-      res.status(400).json({ success: false, message: 'Missing required master fields' });
+    const cleanName = name?.trim();
+    if (!cleanName || !categoryId || !brandId || !supplierId) {
+      res.status(400).json({ success: false, message: 'Missing required master fields (name, categoryId, brandId, supplierId)' });
       return;
     }
 
     const hasVariants = productStructure === 'variant' && variants && variants.length > 0;
 
+    if (!hasVariants) {
+      const cost = Number(costPrice);
+      const sell = Number(sellingPrice);
+      const stock = Number(currentStock || 0);
+      const reorder = Number(reorderLevel || 10);
+      const capacity = Number(targetCapacity || 50);
+
+      if (isNaN(cost) || cost <= 0) {
+        res.status(400).json({ success: false, message: 'Cost price must be a positive number.' });
+        return;
+      }
+      if (isNaN(sell) || sell <= 0) {
+        res.status(400).json({ success: false, message: 'Selling price must be a positive number.' });
+        return;
+      }
+      if (sell < cost) {
+        res.status(400).json({ success: false, message: 'Selling price cannot be less than cost price.' });
+        return;
+      }
+      if (isNaN(stock) || stock < 0 || !Number.isInteger(stock)) {
+        res.status(400).json({ success: false, message: 'Current stock must be a non-negative integer.' });
+        return;
+      }
+      if (isNaN(reorder) || reorder < 0 || !Number.isInteger(reorder)) {
+        res.status(400).json({ success: false, message: 'Reorder level must be a non-negative integer.' });
+        return;
+      }
+      if (isNaN(capacity) || capacity <= 0 || !Number.isInteger(capacity)) {
+        res.status(400).json({ success: false, message: 'Target capacity must be a positive integer.' });
+        return;
+      }
+
+      if (req.body.mfgDate && req.body.expiryDate) {
+        const mfg = new Date(req.body.mfgDate);
+        const exp = new Date(req.body.expiryDate);
+        if (exp <= mfg) {
+          res.status(400).json({ success: false, message: 'Expiry date must be after manufacturing date.' });
+          return;
+        }
+      }
+    } else {
+      // Validate variants
+      for (const v of variants) {
+        if (!v.sku || !v.sku.trim()) {
+          res.status(400).json({ success: false, message: 'SKU is required for all variants.' });
+          return;
+        }
+        const vCost = Number(v.costPrice);
+        const vSell = Number(v.sellingPrice);
+        const vStock = Number(v.stock || 0);
+        const vReorder = Number(v.reorderLevel || 10);
+        const vCapacity = Number(v.targetCapacity || 50);
+
+        if (isNaN(vCost) || vCost <= 0) {
+          res.status(400).json({ success: false, message: `Cost price for variant ${v.variantName || v.sku} must be a positive number.` });
+          return;
+        }
+        if (isNaN(vSell) || vSell <= 0) {
+          res.status(400).json({ success: false, message: `Selling price for variant ${v.variantName || v.sku} must be a positive number.` });
+          return;
+        }
+        if (vSell < vCost) {
+          res.status(400).json({ success: false, message: `Selling price for variant ${v.variantName || v.sku} cannot be less than cost price.` });
+          return;
+        }
+        if (isNaN(vStock) || vStock < 0 || !Number.isInteger(vStock)) {
+          res.status(400).json({ success: false, message: `Stock for variant ${v.variantName || v.sku} must be a non-negative integer.` });
+          return;
+        }
+        if (isNaN(vReorder) || vReorder < 0 || !Number.isInteger(vReorder)) {
+          res.status(400).json({ success: false, message: `Reorder level for variant ${v.variantName || v.sku} must be a non-negative integer.` });
+          return;
+        }
+        if (isNaN(vCapacity) || vCapacity <= 0 || !Number.isInteger(vCapacity)) {
+          res.status(400).json({ success: false, message: `Target capacity for variant ${v.variantName || v.sku} must be a positive integer.` });
+          return;
+        }
+        if (v.mfgDate && v.expiryDate) {
+          const mfg = new Date(v.mfgDate);
+          const exp = new Date(v.expiryDate);
+          if (exp <= mfg) {
+            res.status(400).json({ success: false, message: `Expiry date must be after manufacturing date for variant ${v.variantName || v.sku}.` });
+            return;
+          }
+        }
+      }
+    }
+
     // 1. Create Master Product Class
     const master = await prisma.masterProductClass.create({
       data: {
-        name,
+        name: cleanName,
         categoryId,
         subCategoryId: subCategoryId || null,
         brandId,
@@ -68,10 +157,10 @@ export const createProduct = async (req: Request, res: Response): Promise<void> 
       for (const v of variants) {
         const p = await prisma.product.create({
           data: {
-            sku: v.sku || `VAR-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            sku: v.sku.trim(),
             masterId: master.id,
-            barcode: v.barcode || `479${Math.floor(1000000000 + Math.random() * 9000000000)}`,
-            name: v.variantName || name,
+            barcode: v.barcode?.trim() || `479${Math.floor(1000000000 + Math.random() * 9000000000)}`,
+            name: (v.variantName || name).trim(),
             unitType: v.unit || 'Piece',
             costPrice: Number(v.costPrice || 0),
             sellingPrice: Number(v.sellingPrice || 0),
@@ -81,7 +170,7 @@ export const createProduct = async (req: Request, res: Response): Promise<void> 
             status: mapStatus(status),
             imageUrl: v.imageUrl || imageUrl || '',
             variantAttributeType: v.attributeType ? `${v.attributeType}: ${v.attributeValue}` : null,
-            batchNumber: v.batchNumber || null,
+            batchNumber: v.batchNumber?.trim() || null,
             mfgDate: v.mfgDate ? new Date(v.mfgDate) : null,
             expiryDate: v.expiryDate ? new Date(v.expiryDate) : null
           }
@@ -90,13 +179,13 @@ export const createProduct = async (req: Request, res: Response): Promise<void> 
       }
     } else {
       // Single product
-      const newSku = req.body.sku || `MANUAL-${Date.now()}`;
+      const newSku = (req.body.sku || `MANUAL-${Date.now()}`).trim();
       const p = await prisma.product.create({
         data: {
           sku: newSku,
           masterId: master.id,
-          barcode: barcode || `479${Math.floor(1000000000 + Math.random() * 9000000000)}`,
-          name: name, // Single product inherits master name
+          barcode: barcode?.trim() || `479${Math.floor(1000000000 + Math.random() * 9000000000)}`,
+          name: cleanName, // Single product inherits master name
           unitType: unitType || 'Piece',
           costPrice: Number(costPrice || 0),
           sellingPrice: Number(sellingPrice || 0),
@@ -107,7 +196,7 @@ export const createProduct = async (req: Request, res: Response): Promise<void> 
           imageUrl: imageUrl || '',
           mfgDate: req.body.mfgDate ? new Date(req.body.mfgDate) : null,
           expiryDate: req.body.expiryDate ? new Date(req.body.expiryDate) : null,
-          batchNumber: req.body.batchNumber || null
+          batchNumber: req.body.batchNumber?.trim() || null
         }
       });
       createdProducts.push(p);
@@ -119,8 +208,14 @@ export const createProduct = async (req: Request, res: Response): Promise<void> 
       data: { master, products: createdProducts }
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating product:', error);
+    if (error.code === 'P2002') {
+      const targets = error.meta?.target || [];
+      const field = targets.join(', ');
+      res.status(400).json({ success: false, message: `Duplicate entry error: The field(s) (${field}) already exist.` });
+      return;
+    }
     res.status(500).json({ success: false, message: 'Server Error' });
   }
 };
@@ -139,6 +234,102 @@ export const updateProduct = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
+    const cleanName = name?.trim();
+    if (!cleanName || !categoryId || !brandId || !supplierId) {
+      res.status(400).json({ success: false, message: 'Missing required master fields (name, categoryId, brandId, supplierId)' });
+      return;
+    }
+
+    const hasVariants = productStructure === 'variant' && variants && variants.length > 0;
+
+    if (!hasVariants) {
+      const cost = Number(costPrice);
+      const sell = Number(sellingPrice);
+      const stock = Number(currentStock || 0);
+      const reorder = Number(reorderLevel || 10);
+      const capacity = Number(targetCapacity || 50);
+
+      if (isNaN(cost) || cost <= 0) {
+        res.status(400).json({ success: false, message: 'Cost price must be a positive number.' });
+        return;
+      }
+      if (isNaN(sell) || sell <= 0) {
+        res.status(400).json({ success: false, message: 'Selling price must be a positive number.' });
+        return;
+      }
+      if (sell < cost) {
+        res.status(400).json({ success: false, message: 'Selling price cannot be less than cost price.' });
+        return;
+      }
+      if (isNaN(stock) || stock < 0 || !Number.isInteger(stock)) {
+        res.status(400).json({ success: false, message: 'Current stock must be a non-negative integer.' });
+        return;
+      }
+      if (isNaN(reorder) || reorder < 0 || !Number.isInteger(reorder)) {
+        res.status(400).json({ success: false, message: 'Reorder level must be a non-negative integer.' });
+        return;
+      }
+      if (isNaN(capacity) || capacity <= 0 || !Number.isInteger(capacity)) {
+        res.status(400).json({ success: false, message: 'Target capacity must be a positive integer.' });
+        return;
+      }
+
+      if (mfgDate && expiryDate) {
+        const mfg = new Date(mfgDate);
+        const exp = new Date(expiryDate);
+        if (exp <= mfg) {
+          res.status(400).json({ success: false, message: 'Expiry date must be after manufacturing date.' });
+          return;
+        }
+      }
+    } else {
+      // Validate variants
+      for (const v of variants) {
+        if (!v.sku || !v.sku.trim()) {
+          res.status(400).json({ success: false, message: 'SKU is required for all variants.' });
+          return;
+        }
+        const vCost = Number(v.costPrice);
+        const vSell = Number(v.sellingPrice);
+        const vStock = Number(v.stock || 0);
+        const vReorder = Number(v.reorderLevel || 10);
+        const vCapacity = Number(v.targetCapacity || 50);
+
+        if (isNaN(vCost) || vCost <= 0) {
+          res.status(400).json({ success: false, message: `Cost price for variant ${v.variantName || v.sku} must be a positive number.` });
+          return;
+        }
+        if (isNaN(vSell) || vSell <= 0) {
+          res.status(400).json({ success: false, message: `Selling price for variant ${v.variantName || v.sku} must be a positive number.` });
+          return;
+        }
+        if (vSell < vCost) {
+          res.status(400).json({ success: false, message: `Selling price for variant ${v.variantName || v.sku} cannot be less than cost price.` });
+          return;
+        }
+        if (isNaN(vStock) || vStock < 0 || !Number.isInteger(vStock)) {
+          res.status(400).json({ success: false, message: `Stock for variant ${v.variantName || v.sku} must be a non-negative integer.` });
+          return;
+        }
+        if (isNaN(vReorder) || vReorder < 0 || !Number.isInteger(vReorder)) {
+          res.status(400).json({ success: false, message: `Reorder level for variant ${v.variantName || v.sku} must be a non-negative integer.` });
+          return;
+        }
+        if (isNaN(vCapacity) || vCapacity <= 0 || !Number.isInteger(vCapacity)) {
+          res.status(400).json({ success: false, message: `Target capacity for variant ${v.variantName || v.sku} must be a positive integer.` });
+          return;
+        }
+        if (v.mfgDate && v.expiryDate) {
+          const mfg = new Date(v.mfgDate);
+          const exp = new Date(v.expiryDate);
+          if (exp <= mfg) {
+            res.status(400).json({ success: false, message: `Expiry date must be after manufacturing date for variant ${v.variantName || v.sku}.` });
+            return;
+          }
+        }
+      }
+    }
+
     // Find the product and its master class
     const product = await prisma.product.findUnique({
       where: { sku },
@@ -151,13 +342,12 @@ export const updateProduct = async (req: Request, res: Response): Promise<void> 
     }
 
     const masterId = product.masterId;
-    const hasVariants = productStructure === 'variant' && variants && variants.length > 0;
 
     // 1. Update Master Product Class
     await prisma.masterProductClass.update({
       where: { id: masterId },
       data: {
-        name,
+        name: cleanName,
         categoryId,
         subCategoryId: subCategoryId || null,
         brandId,
@@ -285,8 +475,14 @@ export const updateProduct = async (req: Request, res: Response): Promise<void> 
       message: 'Product updated successfully',
       data: updatedProducts
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating product:', error);
+    if (error.code === 'P2002') {
+      const targets = error.meta?.target || [];
+      const field = targets.join(', ');
+      res.status(400).json({ success: false, message: `Duplicate entry error: The field(s) (${field}) already exist.` });
+      return;
+    }
     res.status(500).json({ success: false, message: 'Server Error' });
   }
 };

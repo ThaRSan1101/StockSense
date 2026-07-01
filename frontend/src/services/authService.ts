@@ -69,6 +69,16 @@ export const authService = {
   async updateProfile(profileData: { name: string; email: string; phone?: string }): Promise<AuthUser> {
     const response = await api.put<{ success: boolean; data: AuthUser }>('/auth/profile', profileData)
     return response.data.data
+  },
+
+  async updatePassword(passwordData: { currentPassword: string; newPassword: string }): Promise<{ success: boolean; message: string }> {
+    const response = await api.put<{ success: boolean; message: string }>('/auth/profile/password', passwordData)
+    return response.data
+  },
+
+  async checkEmail(email: string): Promise<boolean> {
+    const response = await api.get<{ success: boolean; available: boolean }>(`/auth/users/check-email?email=${encodeURIComponent(email)}`)
+    return response.data.available
   }
 }
 

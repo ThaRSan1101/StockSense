@@ -205,7 +205,7 @@ export class NotificationService {
           type: 'LOW_STOCK',
           severity: 'WARNING',
           title: `${product.name} — Low Stock Alert`,
-          message: `Inventory is at ${currentStock} units. This is below the reorder threshold of ${reorderLevel} units.`,
+          message: `Inventory is at ${currentStock} ${currentStock === 1 ? 'unit' : 'units'}. This is below the reorder threshold of ${reorderLevel} ${reorderLevel === 1 ? 'unit' : 'units'}.`,
           sku,
           suggestedAction: 'Restock Now',
         });
@@ -251,7 +251,7 @@ export class NotificationService {
             type: 'OVERSTOCK',
             severity: 'WARNING',
             title: `${product.name} — Overstock Alert`,
-            message: `Stock is at ${currentStock} units (${pct}% of ${targetCapacity} capacity), exceeding the limit of ${overstockLimit} units.`,
+            message: `Stock is at ${currentStock} ${currentStock === 1 ? 'unit' : 'units'} (${pct}% of ${targetCapacity} capacity), exceeding the limit of ${overstockLimit} ${overstockLimit === 1 ? 'unit' : 'units'}.`,
             sku,
             suggestedAction: 'Remove Shelf',
           });
@@ -292,7 +292,7 @@ export class NotificationService {
             type: 'EXPIRED',
             severity: 'CRITICAL',
             title: `${product.name} — Product Expired`,
-            message: `Expired on ${expiryDate.toLocaleDateString('en-GB')}. ${currentStock} units remain on shelf.`,
+            message: `Expired on ${expiryDate.toLocaleDateString('en-GB')}. ${currentStock} ${currentStock === 1 ? 'unit' : 'units'} remain on shelf.`,
             sku,
             suggestedAction: 'Remove Shelf',
           });
@@ -307,7 +307,7 @@ export class NotificationService {
         const existing = await prisma.notification.findFirst({
           where: { sku, type: 'EXPIRING_SOON' }
         });
-        const msg = `${currentStock} units expiring on ${expiryDate.toLocaleDateString('en-GB')} (${days} days remaining).`;
+        const msg = `${currentStock} ${currentStock === 1 ? 'unit' : 'units'} expiring on ${expiryDate.toLocaleDateString('en-GB')} (${days} days remaining).`;
 
         if (!existing) {
           await this.createNotification({
@@ -410,9 +410,9 @@ export class NotificationService {
           type: 'DEMAND_FORECAST',
           severity: 'INFO',
           title: `${product.name} — Reorder Recommendation`,
-          message: `Demand forecast suggests restocking ${suggestedQty} units. AI predicts high sales velocity for this item.`,
+          message: `Demand forecast suggests restocking ${suggestedQty} ${suggestedQty === 1 ? 'unit' : 'units'}. AI predicts high sales velocity for this item.`,
           sku,
-          suggestedAction: 'Adjust Reorder Threshold',
+          suggestedAction: 'Review Stock Levels',
         });
       }
     } else {

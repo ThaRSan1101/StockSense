@@ -17,6 +17,7 @@ export const getAdminDashboardMetrics = async (req: AuthRequest, res: Response):
           gte: today,
           lte: endOfDay,
         },
+        draft: false
       },
       include: {
         cashier: {
@@ -39,6 +40,7 @@ export const getAdminDashboardMetrics = async (req: AuthRequest, res: Response):
           gte: yesterday,
           lte: yesterdayEnd,
         },
+        draft: false
       },
     });
 
@@ -83,7 +85,8 @@ export const getAdminDashboardMetrics = async (req: AuthRequest, res: Response):
           createdAt: {
             gte: today,
             lte: endOfDay,
-          }
+          },
+          draft: false
         }
       },
       include: {

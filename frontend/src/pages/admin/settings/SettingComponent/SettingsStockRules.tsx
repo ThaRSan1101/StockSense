@@ -4,10 +4,11 @@ import { Toggle } from './Toggle';
 
 interface Props {
   rules: StockRulesConfig;
+  errors?: { [key: string]: string };
   onChange: (updated: StockRulesConfig) => void;
 }
 
-export default function SettingsStockRules({ rules, onChange }: Props) {
+export default function SettingsStockRules({ rules, errors = {}, onChange }: Props) {
   const updateField = (field: keyof StockRulesConfig, value: any) => {
     onChange({
       ...rules,
@@ -41,12 +42,13 @@ export default function SettingsStockRules({ rules, onChange }: Props) {
                 type="text" 
                 value={rules.defaultReorderLevel} 
                 onChange={(e) => updateField('defaultReorderLevel', e.target.value)}
-                className="w-full bg-white border border-slate-200 text-slate-800 text-base rounded-xl px-4 py-3 focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252] transition-shadow" 
+                className={`w-full bg-white border ${errors.defaultReorderLevel ? 'border-rose-500' : 'border-slate-200'} text-slate-800 text-base rounded-xl px-4 py-3 focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252] transition-shadow`} 
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
                 <span className="bg-[#e6f4ef] text-[#0b8252] text-xs font-bold px-2 py-1 rounded-md">%</span>
               </div>
             </div>
+            {errors.defaultReorderLevel && <p className="text-[10px] text-rose-500 font-medium mt-1">{errors.defaultReorderLevel}</p>}
             <p className="text-[13px] text-slate-400 mt-2 leading-relaxed">
               Reorders item when stock falls below this percentage of its capacity.
             </p>
@@ -63,12 +65,13 @@ export default function SettingsStockRules({ rules, onChange }: Props) {
                 type="text" 
                 value={rules.minimumStockThreshold} 
                 onChange={(e) => updateField('minimumStockThreshold', e.target.value)}
-                className="w-full bg-white border border-slate-200 text-slate-800 text-base rounded-xl px-4 py-3 focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252] transition-shadow" 
+                className={`w-full bg-white border ${errors.minimumStockThreshold ? 'border-rose-500' : 'border-slate-200'} text-slate-800 text-base rounded-xl px-4 py-3 focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252] transition-shadow`} 
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
                 <span className="bg-[#e6f4ef] text-[#0b8252] text-xs font-bold px-2 py-1 rounded-md">%</span>
               </div>
             </div>
+            {errors.minimumStockThreshold && <p className="text-[10px] text-rose-500 font-medium mt-1">{errors.minimumStockThreshold}</p>}
             <p className="text-[13px] text-slate-400 mt-2 leading-relaxed">
               Triggers high-priority alerts when stock falls below this safety margin.
             </p>
@@ -85,12 +88,13 @@ export default function SettingsStockRules({ rules, onChange }: Props) {
                 type="text" 
                 value={rules.maximumStockLimit} 
                 onChange={(e) => updateField('maximumStockLimit', e.target.value)}
-                className="w-full bg-white border border-slate-200 text-slate-800 text-base rounded-xl px-4 py-3 focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252] transition-shadow" 
+                className={`w-full bg-white border ${errors.maximumStockLimit ? 'border-rose-500' : 'border-slate-200'} text-slate-800 text-base rounded-xl px-4 py-3 focus:outline-none focus:border-[#0b8252] focus:ring-1 focus:ring-[#0b8252] transition-shadow`} 
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
                 <span className="bg-[#e6f4ef] text-[#0b8252] text-xs font-bold px-2 py-1 rounded-md">%</span>
               </div>
             </div>
+            {errors.maximumStockLimit && <p className="text-[10px] text-rose-500 font-medium mt-1">{errors.maximumStockLimit}</p>}
             <p className="text-[13px] text-slate-400 mt-2 leading-relaxed">
               Upper ceiling capacity percentage to prevent warehouse overstocking.
             </p>

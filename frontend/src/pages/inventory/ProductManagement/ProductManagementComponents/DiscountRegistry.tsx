@@ -146,8 +146,13 @@ export default function DiscountRegistry({ products, showToast, showConfirm }: D
   };
 
   const handleSave = async () => {
-    if (!name.trim()) {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
       toast.error('Please enter a discount campaign name.');
+      return;
+    }
+    if (trimmedName.length > 100) {
+      toast.error('Discount campaign name must be 100 characters or less.');
       return;
     }
 
@@ -172,9 +177,17 @@ export default function DiscountRegistry({ products, showToast, showConfirm }: D
       }
     }
 
-    if (type === 'SEASONAL' && (!startDate || !endDate)) {
-      toast.error('Please specify both start and end dates.');
-      return;
+    if (type === 'SEASONAL') {
+      if (!startDate || !endDate) {
+        toast.error('Please specify both start and end dates.');
+        return;
+      }
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      if (end <= start) {
+        toast.error('End Date must be after Start Date.');
+        return;
+      }
     }
 
     if (type === 'DAILY' && !applicableDate) {

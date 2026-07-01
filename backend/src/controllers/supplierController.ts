@@ -16,13 +16,67 @@ export const getSuppliers = async (_req: Request, res: Response): Promise<void> 
 export const createSupplier = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, companyName, email, phone, address } = req.body;
-    if (!name || !companyName) {
+    const cleanName = name?.trim();
+    const cleanCompanyName = companyName?.trim();
+    const cleanEmail = email?.trim() || null;
+    const cleanPhone = phone?.trim();
+    const cleanAddress = address?.trim();
+
+    if (!cleanName || !cleanCompanyName) {
       res.status(400).json({ success: false, message: 'Name and Company Name are required' });
+      return;
+    }
+    if (cleanName.length > 100) {
+      res.status(400).json({ success: false, message: 'Supplier name must be 100 characters or less.' });
+      return;
+    }
+    if (!/^[a-zA-Z\s]+$/.test(cleanName)) {
+      res.status(400).json({ success: false, message: 'Supplier name must contain letters only.' });
+      return;
+    }
+    if (cleanCompanyName.length > 100) {
+      res.status(400).json({ success: false, message: 'Company name must be 100 characters or less.' });
+      return;
+    }
+    if (!/^[a-zA-Z0-9\s.,&'()-]+$/.test(cleanCompanyName)) {
+      res.status(400).json({ success: false, message: 'Company name can only contain letters, numbers, and basic punctuation.' });
+      return;
+    }
+    if (cleanEmail) {
+      if (cleanEmail.length > 100) {
+        res.status(400).json({ success: false, message: 'Email must be 100 characters or less.' });
+        return;
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(cleanEmail)) {
+        res.status(400).json({ success: false, message: 'Enter a valid email address.' });
+        return;
+      }
+      const existingEmail = await prisma.supplier.findFirst({ where: { email: cleanEmail } });
+      if (existingEmail) {
+        res.status(400).json({ success: false, message: 'This email address is already registered.' });
+        return;
+      }
+    }
+    if (cleanPhone) {
+      if (!/^\d{10}$/.test(cleanPhone)) {
+        res.status(400).json({ success: false, message: 'Phone number must be exactly 10 digits.' });
+        return;
+      }
+    }
+    if (cleanAddress && cleanAddress.length > 300) {
+      res.status(400).json({ success: false, message: 'Address must be 300 characters or less.' });
       return;
     }
 
     const newSupplier = await prisma.supplier.create({
-      data: { name, companyName, email, phone, address }
+      data: {
+        name: cleanName,
+        companyName: cleanCompanyName,
+        email: cleanEmail,
+        phone: cleanPhone || '',
+        address: cleanAddress || ''
+      }
     });
 
     res.status(201).json({ success: true, data: newSupplier });
@@ -43,14 +97,80 @@ export const updateSupplier = async (req: Request, res: Response): Promise<void>
       return;
     }
 
+    const cleanName = name !== undefined ? name?.trim() : undefined;
+    const cleanCompanyName = companyName !== undefined ? companyName?.trim() : undefined;
+    const cleanEmail = email !== undefined ? (email !== null ? email?.trim() : null) : undefined;
+    const cleanPhone = phone !== undefined ? phone?.trim() : undefined;
+    const cleanAddress = address !== undefined ? address?.trim() : undefined;
+
+    if (cleanName !== undefined && !cleanName) {
+      res.status(400).json({ success: false, message: 'Supplier name cannot be empty.' });
+      return;
+    }
+    if (cleanName !== undefined && cleanName.length > 100) {
+      res.status(400).json({ success: false, message: 'Supplier name must be 100 characters or less.' });
+      return;
+    }
+    if (cleanName !== undefined && !/^[a-zA-Z\s]+$/.test(cleanName)) {
+      res.status(400).json({ success: false, message: 'Supplier name must contain letters only.' });
+      return;
+    }
+
+    if (cleanCompanyName !== undefined && !cleanCompanyName) {
+      res.status(400).json({ success: false, message: 'Company name cannot be empty.' });
+      return;
+    }
+    if (cleanCompanyName !== undefined && cleanCompanyName.length > 100) {
+      res.status(400).json({ success: false, message: 'Company name must be 100 characters or less.' });
+      return;
+    }
+    if (cleanCompanyName !== undefined && !/^[a-zA-Z0-9\s.,&'()-]+$/.test(cleanCompanyName)) {
+      res.status(400).json({ success: false, message: 'Company name can only contain letters, numbers, and basic punctuation.' });
+      return;
+    }
+
+    if (cleanEmail !== undefined && cleanEmail) {
+      if (cleanEmail.length > 100) {
+        res.status(400).json({ success: false, message: 'Email must be 100 characters or less.' });
+        return;
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(cleanEmail)) {
+        res.status(400).json({ success: false, message: 'Enter a valid email address.' });
+        return;
+      }
+      const existingEmail = await prisma.supplier.findFirst({
+        where: {
+          email: cleanEmail,
+          id: { not: id }
+        }
+      });
+      if (existingEmail) {
+        res.status(400).json({ success: false, message: 'This email address is already registered.' });
+        return;
+      }
+    }
+
+    if (cleanPhone !== undefined && cleanPhone) {
+      if (!/^\d{10}$/.test(cleanPhone)) {
+        res.status(400).json({ success: false, message: 'Phone number must be exactly 10 digits.' });
+        return;
+      }
+    }
+
+    if (cleanAddress !== undefined && cleanAddress && cleanAddress.length > 300) {
+      res.status(400).json({ success: false, message: 'Address must be 300 characters or less.' });
+      return;
+    }
+
     const updatedSupplier = await prisma.supplier.update({
       where: { id },
       data: {
-        name: name !== undefined ? name : undefined,
-        companyName: companyName !== undefined ? companyName : undefined,
-        email: email !== undefined ? email : undefined,
-        phone: phone !== undefined ? phone : undefined,
-        address: address !== undefined ? address : undefined
+        name: cleanName,
+        companyName: cleanCompanyName,
+        email: cleanEmail,
+        phone: cleanPhone,
+        address: cleanAddress
       }
     });
 

@@ -366,7 +366,7 @@ export default function ProductManagement() {
         MasterDataService.getBrands(),
         MasterDataService.getSuppliers()
       ]);
-      
+
       let mappedProducts: ProductItem[] = [];
       if (prodRes.success) {
         mappedProducts = prodRes.data.map(mapBackendProductToFrontend);
@@ -415,10 +415,10 @@ export default function ProductManagement() {
           'https://images.unsplash.com/photo-1607006342411-b01354cc792a?q=80&w=200&auto=format&fit=crop',
           'https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?q=80&w=200&auto=format&fit=crop'
         ];
-        setBrands(brandRes.data.map((b: any, i: number) => ({ 
-          id: b.id, 
-          name: b.name, 
-          description: b.description || '', 
+        setBrands(brandRes.data.map((b: any, i: number) => ({
+          id: b.id,
+          name: b.name,
+          description: b.description || '',
           status: b.state === 'ACTIVE' ? 'Active' : 'Inactive',
           imageUrl: brandImages[i % brandImages.length]
         })));
@@ -674,7 +674,7 @@ export default function ProductManagement() {
 
     if (targetStatus === 'Inactive') {
       const brandProducts = products.filter(p => p.brand === brand.name);
-      
+
       const messageNode = (
         <div className="space-y-3">
           <p className="text-xs text-outline">
@@ -714,11 +714,11 @@ export default function ProductManagement() {
     setLoading(true);
     try {
       const existingProduct = editingProduct || products.find((product) => product.id === formData.id);
-      
+
       const parentCat = categories.find(c => c.name === formData.category);
       const categoryId = parentCat?.id || categories[0]?.id;
       const subCategoryId = parentCat?.children.find(sub => sub.name === formData.subcategory)?.id || null;
-      
+
       const brandId = brands.find(b => b.name === formData.brand)?.id || brands[0]?.id;
       const supplierId = suppliers.find(s => s.name === formData.supplier)?.id || suppliers[0]?.id;
 
@@ -731,7 +731,7 @@ export default function ProductManagement() {
         supplierId,
         imageUrl: formData.frontImageUrl || formData.imageUrl || existingProduct?.imageUrl || '',
         status: formData.status || 'Active',
-        
+
         // Single product specifics
         sku: formData.sku ? String(formData.sku) : undefined,
         barcode: formData.barcode ? String(formData.barcode) : undefined,
@@ -1012,7 +1012,7 @@ export default function ProductManagement() {
                       <span className="material-symbols-outlined text-[20px]">close</span>
                     </button>
                   </div>
-                  
+
                   {/* Modal Body */}
                   <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
                     <NewProductForm
@@ -1037,7 +1037,7 @@ export default function ProductManagement() {
               const iconColor = isDeleteAction ? 'text-rose-600 bg-rose-50' : 'text-primary bg-primary-50';
               const iconName = isDeleteAction ? 'warning' : 'help';
               const confirmBtnBg = isDeleteAction ? 'bg-rose-600 hover:bg-rose-700 text-white' : 'bg-primary text-white';
-              
+
               return (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-150">
                   <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">

@@ -16,10 +16,8 @@ export default function ProcurementManagement() {
 
   // Active Datasets State
   const [suppliersList, setSuppliersList] = useState<Supplier[]>([]);
-  const [loading, setLoading] = useState(false);
 
   const loadSuppliersData = async () => {
-    setLoading(true);
     try {
       const [supRes, prodRes] = await Promise.all([
         MasterDataService.getSuppliers(),
@@ -53,8 +51,6 @@ export default function ProcurementManagement() {
       }
     } catch (err) {
       console.error('Failed to load supplier registry data', err);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -107,70 +103,105 @@ export default function ProcurementManagement() {
 
 
 
+  // Validate Individual Fields as the User Types
+  const validateField = (name: string, value: string, ignoreId?: string | null) => {
+    let error = '';
+    const trimmedVal = value.trim();
+
+    switch (name) {
+      case 'companyName':
+        if (!trimmedVal) {
+          error = 'Company name is required';
+        } else if (trimmedVal.length > 100) {
+          error = 'Company name must be 100 characters or less';
+        } else if (!/^[a-zA-Z0-9\s.,&'()-]+$/.test(value)) {
+          error = 'Company name can only contain letters, numbers, and basic punctuation';
+        }
+        break;
+
+      case 'name':
+        if (!trimmedVal) {
+          error = 'Supplier name is required';
+        } else if (trimmedVal.length > 100) {
+          error = 'Supplier name must be 100 characters or less';
+        } else if (!/^[a-zA-Z\s]+$/.test(value)) {
+          error = 'Supplier name must contain letters only';
+        }
+        break;
+
+      case 'phone':
+        if (!trimmedVal) {
+          error = 'Phone number is required';
+        } else if (!/^\d{10}$/.test(value)) {
+          error = 'Phone number must be exactly 10 digits';
+        }
+        break;
+
+      case 'email':
+        if (trimmedVal) {
+          if (trimmedVal.length > 100) {
+            error = 'Email must be 100 characters or less';
+          } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedVal)) {
+            error = 'Enter a valid email address';
+          } else {
+            // Uniqueness check for email locally
+            const currentIgnoreId = ignoreId !== undefined ? ignoreId : (selectedSupplier?.id || null);
+            const emailExists = suppliersList.some(
+              (s) => s.email.toLowerCase() === trimmedVal.toLowerCase() && s.id !== currentIgnoreId
+            );
+            if (emailExists) {
+              error = 'This email address is already registered';
+            }
+          }
+        }
+        break;
+
+      case 'address':
+        if (!trimmedVal) {
+          error = 'Warehouse address is required';
+        } else if (trimmedVal.length > 300) {
+          error = 'Address must be 300 characters or less';
+        }
+        break;
+    }
+
+    setFormErrors((prev) => ({ ...prev, [name]: error }));
+    return error;
+  };
+
   // Handle Input Changes for Suppliers
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    if (formErrors[name as keyof typeof formErrors]) {
-      setFormErrors(prev => ({ ...prev, [name]: '' }));
-    }
+    validateField(name, value);
   };
-
-
 
   // Validation Form for Suppliers
   const validateForm = (ignoreId?: string | null) => {
-    let isValid = true;
-    const errors = {
-      name: '',
-      companyName: '',
-      email: '',
-      phone: '',
-      address: '',
-    };
+    const currentIgnoreId = ignoreId !== undefined ? ignoreId : (selectedSupplier?.id || null);
+    
+    // Validate each field
+    const companyNameErr = validateField('companyName', formData.companyName, currentIgnoreId);
+    const nameErr = validateField('name', formData.name, currentIgnoreId);
+    const phoneErr = validateField('phone', formData.phone, currentIgnoreId);
+    const emailErr = validateField('email', formData.email, currentIgnoreId);
+    const addressErr = validateField('address', formData.address, currentIgnoreId);
 
-    if (!formData.name.trim()) {
-      errors.name = 'Supplier name is required';
-      isValid = false;
-    } else {
+    let hasErrors = Boolean(companyNameErr || nameErr || phoneErr || emailErr || addressErr);
+
+    // Duplicate Name check
+    if (formData.name.trim() && !nameErr) {
       const isDuplicate = suppliersList.some(s =>
         s.name.toLowerCase() === formData.name.trim().toLowerCase() &&
-        s.id !== ignoreId
+        s.id !== currentIgnoreId
       );
       if (isDuplicate) {
-        errors.name = `Supplier "${formData.name.trim()}" already exists.`;
-        isValid = false;
+        setFormErrors(prev => ({ ...prev, name: `Supplier "${formData.name.trim()}" already exists.` }));
+        hasErrors = true;
       }
     }
 
-    if (!formData.companyName.trim()) {
-      errors.companyName = 'Company name is required';
-      isValid = false;
-    }
-
-    const cleanPhone = formData.phone.trim().replace(/[\s()-]/g, '');
-    const phoneRegex = /^(?:\+94|94|0)?\d{9}$/;
-    if (!formData.phone.trim()) {
-      errors.phone = 'Phone number is required';
-      isValid = false;
-    } else if (!phoneRegex.test(cleanPhone)) {
-      errors.phone = 'Enter a valid Sri Lankan phone number (e.g. 0771234567)';
-      isValid = false;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (formData.email.trim() && !emailRegex.test(formData.email)) {
-      errors.email = 'Enter a valid email address';
-      isValid = false;
-    }
-
-    if (!formData.address.trim()) {
-      errors.address = 'Warehouse address is required';
-      isValid = false;
-    }
-
-    setFormErrors(errors);
-    return isValid;
+    return !hasErrors;
   };
 
   // CRUD for Suppliers
@@ -287,13 +318,8 @@ export default function ProcurementManagement() {
     }
   };
 
-  const handleDeleteSupplier = (id: string) => {
-    const supplier = suppliersList.find(s => s.id === id);
-    if (supplier) {
-      setSupplierToDelete(supplier);
-      setIsDeleteConfirmOpen(true);
-    }
-  };
+
+
 
   const handleConfirmDeleteSupplier = async () => {
     if (supplierToDelete) {

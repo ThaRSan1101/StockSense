@@ -43,20 +43,6 @@ export default function InventoryAnalytics() {
   const triggerToast = (msg: string) => {
     toast.success(msg);
   };
-
-  const handleExport = () => {
-    triggerToast('📊 Preparing your executive PDF report... print controller opening!');
-    setTimeout(() => window.print(), 1200);
-  };
-
-  const handleRefresh = async () => {
-    const prods = await inventoryOperationsService.getProducts();
-    setProducts(prods);
-    const ledgerData = await inventoryOperationsService.getLedger();
-    setLedger(ledgerData);
-    triggerToast('🔄 Analytics datasets refreshed successfully from active databases!');
-  };
-
   // ── Date-filtered ledger ────────────────────────────────────────────────────
   const filteredLedger = useMemo(() => {
     const now = Date.now();
@@ -278,7 +264,7 @@ export default function InventoryAnalytics() {
         <InventoryHeader />
 
         <main className="flex-1 overflow-y-auto px-6 py-6 bg-[#f8f9fa]">
-          <div className="max-w-[1400px] w-full mx-auto space-y-6">
+          <div id="pdf-export-content" className="max-w-[1400px] w-full mx-auto space-y-6">
 
             {/* Page Header */}
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col xl:flex-row xl:items-center justify-between gap-6">
@@ -322,24 +308,6 @@ export default function InventoryAnalytics() {
                       />
                     </div>
                   )}
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex items-center gap-2.5">
-                  <button
-                    onClick={handleRefresh}
-                    className="p-2 bg-white border border-slate-200 rounded-lg text-slate-600 hover:text-slate-800 hover:bg-slate-50 shadow-sm flex items-center justify-center transition-colors h-[34px] w-[34px]"
-                    title="Refresh Data"
-                  >
-                    <span className="material-symbols-outlined text-[20px] font-bold">refresh</span>
-                  </button>
-                  <button
-                    onClick={handleExport}
-                    className="px-4 py-2 bg-[#0b8252] hover:bg-[#096e45] text-white rounded-lg text-xs font-bold shadow-sm flex items-center gap-2 transition-colors h-[34px]"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">download</span>
-                    Export Report
-                  </button>
                 </div>
               </div>
             </div>

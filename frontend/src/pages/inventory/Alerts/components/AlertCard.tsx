@@ -52,9 +52,9 @@ const getExpiryBadge = (days: number | undefined) => {
   return { label: `${Math.ceil(days / 7)} WEEKS`, cls: 'bg-yellow-100 text-yellow-700 border-yellow-200' };
 };
 
-// Primary action is hidden for Low Stock, Out of Stock, and Overstock
+// Primary action is hidden for Low Stock, Out of Stock, Overstock, and Reorder Recommendation
 const showPrimaryAction = (category: string): boolean => {
-  return category !== 'Low Stock' && category !== 'Out of Stock' && category !== 'Overstock';
+  return category !== 'Low Stock' && category !== 'Out of Stock' && category !== 'Overstock' && category !== 'Reorder Recommendation';
 };
 
 export default function AlertCard({ alert, handlePrimary, dismiss, markRead, onViewProduct }: AlertCardProps) {
@@ -122,7 +122,9 @@ export default function AlertCard({ alert, handlePrimary, dismiss, markRead, onV
           <div className="mt-3 grid grid-cols-2 gap-3">
             <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
               <span className="block text-[9px] font-bold uppercase text-slate-400 mb-1 tracking-wider">Current Stock</span>
-              <span className="font-extrabold text-slate-800 text-sm">{alert.currentStock} units</span>
+              <span className="font-extrabold text-slate-800 text-sm">
+                {alert.currentStock} {alert.currentStock === 1 ? 'unit' : 'units'}
+              </span>
               {stockPct !== null && (
                 <div className="mt-2">
                   <div className="flex justify-between mb-1">

@@ -137,7 +137,9 @@ export const useAlerts = () => {
             severity,
             issueType: n.type,
             currentStock: n.product?.currentStock ?? 0,
-            suggestedAction: n.suggestedAction ?? 'Acknowledge',
+            suggestedAction: n.type === 'DEMAND_FORECAST'
+              ? 'Review Stock Levels'
+              : (n.suggestedAction ?? 'Acknowledge'),
             icon: styles.icon,
             iconBg: styles.iconBg,
             iconColor: styles.iconColor,
