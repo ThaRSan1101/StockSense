@@ -25,93 +25,77 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import { useState } from 'react';
-import { DeadStockProps, ExpiryLossProps, DeadStockItem, ExpiryLossItem } from './analyticsTypes';
-import { AiService } from '../../../../services/aiService';
+import { ExpiryLossProps, ExpiryLossItem } from './analyticsTypes';
+import { AiService, AiDiscountItem } from '../../../../services/aiService';
 
 // ─── Combined props for the Risk & Loss Audits tab ───────────────────────────
 interface RiskTabProps {
-  dynamicDeadStock: DeadStockItem[];
   dynamicExpiryLoss: ExpiryLossItem[];
   totalExpiryLoss: number;
+  aiDiscounts: AiDiscountItem[];
   triggerToast: (msg: string) => void;
 }
 
 // ─── Main Tab Wrapper ─────────────────────────────────────────────────────────
 export default function RiskTab({
-  dynamicDeadStock,
   dynamicExpiryLoss,
   totalExpiryLoss,
+  aiDiscounts,
   triggerToast
 }: RiskTabProps) {
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <DeadStockAnalysisSection dynamicDeadStock={dynamicDeadStock} />
-        <ExpiryLossAnalysisSection
-          dynamicExpiryLoss={dynamicExpiryLoss}
-          totalExpiryLoss={totalExpiryLoss}
-          triggerToast={triggerToast}
-        />
-      </div>
-    </div>
-  );
-}
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <ExpiryLossAnalysisSection
+        dynamicExpiryLoss={dynamicExpiryLoss}
+        totalExpiryLoss={totalExpiryLoss}
+        triggerToast={triggerToast}
+      />
 
-// ─── Dead Stock Inactivity Audit Table ────────────────────────────────────────
-function DeadStockAnalysisSection({ dynamicDeadStock }: DeadStockProps) {
-  return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm lg:col-span-2">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h3 className="font-extrabold text-base text-slate-800 leading-tight">Dead Stock Analysis</h3>
-          <p className="text-[11px] font-medium text-slate-500 mt-1">Products inactive with zero movement over 45 days</p>
+      {/* Smart Markdown Suggestions */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm lg:col-span-2 flex flex-col">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h3 className="font-extrabold text-base text-slate-800 leading-tight">AI Smart Markdowns</h3>
+            <p className="text-[11px] font-medium text-slate-500 mt-1">AI-calculated discounts for near-expiry products</p>
+          </div>
+          <span className="material-symbols-outlined text-emerald-500 text-[20px] animate-pulse">auto_awesome</span>
         </div>
-        <span className="px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[10px] font-bold">
-          Auditor Flagged
-        </span>
-      </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="border-b border-slate-200 bg-slate-50/70">
-              {['Product Name', 'Last Active', 'Days Inactive', 'Cost Value', 'Urgency'].map((h, i) => (
-                <th key={i} className={`p-3 text-xs font-black text-slate-500 uppercase tracking-widest ${i === 1 || i === 2 || i === 4 ? 'text-center' : i === 3 ? 'text-right' : ''}`}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 text-slate-700 text-sm">
-            {dynamicDeadStock.map((item, idx) => {
-              const isCritical  = item.status === 'Critical';
-              const isSlow      = item.status === 'Slow Moving';
-              return (
-                <tr key={idx} className={`transition-colors ${
-                  isCritical ? 'bg-rose-50/20 hover:bg-rose-50/40' :
-                  isSlow     ? 'bg-amber-50/20 hover:bg-amber-50/40' :
-                               'opacity-60 bg-slate-50 hover:opacity-100'
-                }`}>
-                  <td className="p-3 font-extrabold text-slate-800">{item.name}</td>
-                  <td className="p-3 text-center font-bold text-slate-500">{item.lastMovement}</td>
-                  <td className="p-3 text-center font-black text-slate-800">{item.daysInactive} days</td>
-                  <td className="p-3 text-right font-extrabold text-slate-800">Rs. {item.costValue.toLocaleString()}</td>
-                  <td className="p-3 text-center">
-                    <span className={`px-2 py-0.5 text-[9px] font-black rounded uppercase tracking-wider ${
-                      isCritical ? 'bg-rose-100 text-rose-700 border border-rose-200' :
-                      isSlow     ? 'bg-amber-100 text-amber-700 border border-amber-200' :
-                                   'bg-slate-100 text-slate-600'
-                    }`}>
-                      {item.status}
-                    </span>
-                  </td>
+        <div className="overflow-y-auto max-h-[400px] flex-1">
+          {aiDiscounts.length === 0 ? (
+            <p className="text-xs font-semibold text-slate-400 py-8 text-center">No active markdown suggestions. Run AI Sync to check.</p>
+          ) : (
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/70">
+                  {['Product', 'Stock', 'Markdown', 'Reason'].map((h, i) => (
+                    <th key={i} className="p-3 text-[10px] font-black text-slate-500 uppercase tracking-widest">{h}</th>
+                  ))}
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700 text-xs font-semibold">
+                {aiDiscounts.map((item, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-3 font-extrabold text-slate-800">{item.name}</td>
+                    <td className="p-3 text-slate-600">{item.currentStock} units</td>
+                    <td className="p-3">
+                      <span className="px-2 py-0.5 bg-rose-50 text-rose-700 rounded-md font-extrabold border border-rose-100">
+                        {item.suggestedDiscount}% Off
+                      </span>
+                    </td>
+                    <td className="p-3 text-slate-500 leading-relaxed">{item.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   );
 }
+
+
 
 // ─── Expiry Wastage Summary Panel ─────────────────────────────────────────────
 function ExpiryLossAnalysisSection({ dynamicExpiryLoss, totalExpiryLoss, triggerToast }: ExpiryLossProps) {

@@ -4,19 +4,27 @@ import { toast } from 'sonner';
 import Sidebar from '../Shared/Sidebar';
 import InventoryHeader from '../Shared/InventoryHeader';
 import { inventoryOperationsService, ProductItem, LedgerEntry } from '../StockOperations/operations/inventoryOperationsService';
+import { 
+  AiService, 
+  AiForecastItem, 
+  AiDiscountItem, 
+  AiVelocityItem, 
+  AiComboItem 
+} from '../../../services/aiService';
 
 // Analytics subcomponents — organized in Components/analytics/
 import KpiDashboardCards from './analytics/KpiDashboardCards';
 import OverviewTab from './analytics/OverviewTab';
+import ForecastTab from './analytics/ForecastTab';
 import VelocityTab from './analytics/VelocityTab';
 import RiskTab from './analytics/RiskTab';
-import AiInsightsTab from './analytics/AiInsightsTab';
+import CombosTab from './analytics/CombosTab';
 
 export default function InventoryAnalytics() {
   // ── UI State ────────────────────────────────────────────────────────────────
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = (searchParams.get('tab') as 'overview' | 'velocity' | 'risk' | 'ai') || 'overview';
-  const setActiveTab = (tab: 'overview' | 'velocity' | 'risk' | 'ai') => {
+  const activeTab = (searchParams.get('tab') as 'overview' | 'forecast' | 'velocity' | 'markdowns' | 'combos') || 'overview';
+  const setActiveTab = (tab: 'overview' | 'forecast' | 'velocity' | 'markdowns' | 'combos') => {
     setSearchParams({ tab });
   };
   const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'year' | 'custom'>('month');
@@ -28,16 +36,61 @@ export default function InventoryAnalytics() {
   // ── Database State ───────────────────────────────────────────────────────────
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [aiForecasts, setAiForecasts] = useState<AiForecastItem[]>([]);
+  const [aiDiscounts, setAiDiscounts] = useState<AiDiscountItem[]>([]);
+  const [aiVelocity, setAiVelocity] = useState<AiVelocityItem[]>([]);
+  const [aiCombos, setAiCombos] = useState<AiComboItem[]>([]);
+  const [syncing, setSyncing] = useState(false);
+
+  const loadData = async () => {
+    try {
+      const [prods, ledgerData, forecastRes, discountRes, velocityRes, comboRes] = await Promise.all([
+        inventoryOperationsService.getProducts(),
+        inventoryOperationsService.getLedger(),
+        AiService.getDemandForecast(),
+        AiService.getSmartDiscounts(),
+        AiService.getStockVelocity(),
+        AiService.getAprioriCombos()
+      ]);
+
+      setProducts(prods);
+      setLedger(ledgerData);
+
+      if (forecastRes.success) setAiForecasts(forecastRes.data);
+      if (discountRes.success) setAiDiscounts(discountRes.data);
+      if (velocityRes.success) setAiVelocity(velocityRes.data);
+      if (comboRes.success) setAiCombos(comboRes.data);
+    } catch (err: any) {
+      console.error("Error loading database or AI data:", err);
+      toast.error("Failed to load some analytics or AI datasets.");
+    }
+  };
+
+  const handleRunAiSync = async () => {
+    try {
+      setSyncing(true);
+      toast.info("Running AI optimization engine on historical database transactions...");
+      const res = await AiService.runAiSync();
+      if (res.success) {
+        toast.success("AI sync successful! Draft campaigns and alerts generated.");
+        await loadData();
+      } else {
+        toast.error("Failed to execute AI synchronization.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Sync failed. Check connection to python service.");
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   useEffect(() => {
-    async function loadData() {
-      const prods = await inventoryOperationsService.getProducts();
-      setProducts(prods);
-      const ledgerData = await inventoryOperationsService.getLedger();
-      setLedger(ledgerData);
-    }
     loadData();
   }, []);
+
+  const handleRefresh = () => {
+    loadData();
+  };
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
   const triggerToast = (msg: string) => {
@@ -85,6 +138,24 @@ export default function InventoryAnalytics() {
     [dynamicExpiryLoss]);
 
   const dynamicFastMoving = useMemo(() => {
+    if (aiVelocity.length > 0) {
+      return [...aiVelocity]
+        .sort((a, b) => b.unitsSold - a.unitsSold)
+        .slice(0, 5)
+        .map(v => {
+          const matchingProduct = products.find(p => p.sku === v.sku);
+          const sellingPrice = matchingProduct?.sellingPrice || 100;
+          return {
+            name: v.name,
+            category: v.category,
+            movementCount: v.saleEvents,
+            salesVolume: `Rs. ${(v.unitsSold * sellingPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            stockRemaining: v.currentStock,
+            rating: v.status === 'Fast Moving' ? 'High Demand' : 'Steady'
+          };
+        });
+    }
+
     const counts: { [key: string]: { movements: number; qty: number } } = {};
     filteredLedger.filter(l => l.movementType === 'Sale').forEach(s => {
       const prod = products.find(p => p.name === s.productName || p.sku === s.sku);
@@ -108,9 +179,28 @@ export default function InventoryAnalytics() {
       .filter(item => item.movementCount > 0)
       .sort((a, b) => b.movementCount - a.movementCount)
       .slice(0, 5);
-  }, [filteredLedger, products]);
+  }, [filteredLedger, products, aiVelocity]);
 
   const dynamicDeadStock = useMemo(() => {
+    if (aiVelocity.length > 0) {
+      return aiVelocity
+        .filter(v => v.status === 'Dead Stock' || v.status === 'Slow Moving')
+        .map(v => {
+          const statusLabel = v.status === 'Dead Stock' ? 'Critical' : 'Slow Moving';
+          return {
+            name: v.name,
+            lastMovement: v.daysInactive > 0 
+              ? new Date(Date.now() - v.daysInactive * 86400000).toISOString().split('T')[0]
+              : new Date().toISOString().split('T')[0],
+            daysInactive: v.daysInactive,
+            stock: v.currentStock,
+            costValue: v.costValue,
+            status: statusLabel
+          };
+        })
+        .sort((a, b) => b.daysInactive - a.daysInactive);
+    }
+
     return products.map((p) => {
       const productMovements = ledger.filter(l => l.sku === p.sku || l.productName === p.name);
       
@@ -135,7 +225,7 @@ export default function InventoryAnalytics() {
     })
     .filter(item => item.stock > 0 && item.daysInactive > 14)
     .sort((a, b) => b.daysInactive - a.daysInactive);
-  }, [ledger, products]);
+  }, [ledger, products, aiVelocity]);
 
   const dynamicCategoryPerformance = useMemo(() => {
     const cats = Array.from(new Set(products.map(p => p.category)));
@@ -168,6 +258,18 @@ export default function InventoryAnalytics() {
   }, [filteredLedger, products]);
 
   const dynamicReorderSuggestions = useMemo(() => {
+    if (aiForecasts.length > 0) {
+      return aiForecasts
+        .filter(f => f.urgency === 'Critical' || f.urgency === 'Warning')
+        .map(f => ({
+          name: f.name,
+          stock: f.currentStock,
+          threshold: f.reorderLevel,
+          suggestedQty: f.suggestedQty,
+          urgency: f.urgency
+        })).slice(0, 4);
+    }
+
     const lowItems = products.filter(p => p.stock <= p.reorderLevel);
     return lowItems.map(p => ({
       name: p.name,
@@ -176,26 +278,32 @@ export default function InventoryAnalytics() {
       suggestedQty: Math.max(50, p.reorderLevel * 3 - p.stock),
       urgency: p.stock === 0 ? 'Critical' : p.stock <= p.reorderLevel ? 'Warning' : 'Normal'
     })).slice(0, 4);
-  }, [products]);
+  }, [products, aiForecasts]);
 
   const dynamicHealthStats = useMemo(() => {
-    const total = products.length || 1;
-    const outStock = products.filter(p => p.stock === 0).length;
-    const lowStock = products.filter(p => p.stock > 0 && p.stock <= p.reorderLevel).length;
-    const healthy = Math.max(0, products.length - outStock - lowStock);
-    const hPct = Math.round((healthy / total) * 100);
-    const wPct = Math.round((lowStock / total) * 100);
-    const cPct = Math.round((outStock / total) * 100);
+    const sourceList = aiForecasts.length > 0 ? aiForecasts : products.map(p => ({
+      urgency: p.stock === 0 ? 'Critical' as const : (p.stock <= p.reorderLevel ? 'Warning' as const : 'Normal' as const)
+    }));
+
+    const total = sourceList.length || 1;
+    const criticalCount = sourceList.filter(f => f.urgency === 'Critical').length;
+    const warningCount = sourceList.filter(f => f.urgency === 'Warning').length;
+    const healthyCount = sourceList.filter(f => f.urgency === 'Normal').length;
+
+    const hPct = Math.round((healthyCount / total) * 100);
+    const wPct = Math.round((warningCount / total) * 100);
+    const cPct = Math.round((criticalCount / total) * 100);
     const diff = 100 - (hPct + wPct + cPct);
+
     return {
-      healthy: hPct + diff,
+      healthy: Math.max(0, hPct + diff),
       warning: wPct,
       critical: cPct,
-      healthyCount: healthy,
-      warningCount: lowStock,
-      criticalCount: outStock
+      healthyCount,
+      warningCount,
+      criticalCount
     };
-  }, [products]);
+  }, [aiForecasts, products]);
 
   const dynamicMovementInsights = useMemo(() => {
     const cats = Array.from(new Set(products.map(p => p.category)));
@@ -274,6 +382,18 @@ export default function InventoryAnalytics() {
               </div>
 
               <div className="flex flex-wrap items-center gap-3.5 xl:justify-end">
+                {/* Run AI Sync Button */}
+                <button
+                  onClick={handleRunAiSync}
+                  disabled={syncing}
+                  className={`px-4 py-2 text-xs font-bold text-white rounded-lg flex items-center gap-2 transition-all shadow-sm ${
+                    syncing ? 'bg-slate-400 cursor-not-allowed animate-pulse' : 'bg-[#0b8252] hover:bg-[#096e45]'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[16px] animate-pulse">auto_awesome</span>
+                  {syncing ? 'Syncing AI...' : 'Run AI Sync'}
+                </button>
+
                 {/* Date Filters */}
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="flex bg-[#f1f5f9] p-1 rounded-lg border border-slate-200">
@@ -316,9 +436,10 @@ export default function InventoryAnalytics() {
             <div className="flex border-b border-slate-200 gap-6">
               {([
                 { id: 'overview', label: 'Overview & Health', icon: 'dashboard' },
-                { id: 'velocity', label: 'Product Velocity', icon: 'bolt' },
-                { id: 'risk', label: 'Risk & Loss Audits', icon: 'warning_amber' },
-                { id: 'ai', label: 'AI Recommendations', icon: 'auto_awesome' }
+                { id: 'forecast', label: 'AI Demand Forecast', icon: 'trending_up' },
+                { id: 'velocity', label: 'AI Product Velocity', icon: 'bolt' },
+                { id: 'markdowns', label: 'AI Expiry & Markdowns', icon: 'warning_amber' },
+                { id: 'combos', label: 'AI Market Basket Combos', icon: 'join_inner' }
               ] as const).map(tab => (
                 <button
                   key={tab.id}
@@ -357,29 +478,40 @@ export default function InventoryAnalytics() {
               />
             )}
 
-            {/* Tab: Product Velocity */}
-            {activeTab === 'velocity' && (
-              <VelocityTab
-                dynamicFastMoving={dynamicFastMoving}
-                products={products}
+            {/* Tab: AI Demand Forecast */}
+            {activeTab === 'forecast' && (
+              <ForecastTab
+                aiForecasts={aiForecasts}
                 dynamicReorderSuggestions={dynamicReorderSuggestions}
                 triggerToast={triggerToast}
               />
             )}
 
-            {/* Tab: Risk & Loss Audits */}
-            {activeTab === 'risk' && (
-              <RiskTab
+            {/* Tab: AI Product Velocity */}
+            {activeTab === 'velocity' && (
+              <VelocityTab
+                dynamicFastMoving={dynamicFastMoving}
+                products={products}
+                aiVelocity={aiVelocity}
                 dynamicDeadStock={dynamicDeadStock}
+              />
+            )}
+
+            {/* Tab: AI Expiry & Markdowns */}
+            {activeTab === 'markdowns' && (
+              <RiskTab
                 dynamicExpiryLoss={dynamicExpiryLoss}
                 totalExpiryLoss={totalExpiryLoss}
+                aiDiscounts={aiDiscounts}
                 triggerToast={triggerToast}
               />
             )}
 
-            {/* Tab: AI Recommendations */}
-            {activeTab === 'ai' && (
-              <AiInsightsTab onRefreshParent={handleRefresh} />
+            {/* Tab: AI Market Basket Combos */}
+            {activeTab === 'combos' && (
+              <CombosTab
+                aiCombos={aiCombos}
+              />
             )}
 
           </div>
