@@ -75,7 +75,7 @@ def mark_run_completed(db: Session, run_id: str, total_products: int, success_co
         "total_products": total_products,
         "success_count": success_count,
         "failure_count": failure_count,
-        "configuration_snapshot": json.dumps(config_snapshot) if config_snapshot else None
+        "configuration_snapshot": json.dumps(config_snapshot, default=str) if config_snapshot else None
     })
     db.commit()
 
@@ -147,8 +147,8 @@ def save_analyses_and_forecasts(
             "trend_slope": row["trendSlope"],
             "primary_behaviour": row["primaryBehaviour"],
             "trend_direction": row["trendDirection"],
-            "additional_behaviour_tags": json.dumps(row["additionalBehaviourTags"]),
-            "analysis_warnings": json.dumps(row["analysisWarnings"]) if row["analysisWarnings"] else None,
+            "additional_behaviour_tags": json.dumps(row["additionalBehaviourTags"], default=str),
+            "analysis_warnings": json.dumps(row["analysisWarnings"], default=str) if row["analysisWarnings"] else None,
             "created_at": datetime.now()
         })
 
@@ -181,7 +181,7 @@ def save_analyses_and_forecasts(
             "recommended_order_quantity": row["recommendedOrderQuantity"],
             "stock_coverage_days": row["stockCoverageDays"],
             "selected_model": row["selectedModel"],
-            "model_parameters": json.dumps(row["modelParameters"]) if row.get("modelParameters") else None,
+            "model_parameters": json.dumps(row["modelParameters"], default=str) if row.get("modelParameters") else None,
             "mae": row.get("MAE"),
             "rmse": row.get("RMSE"),
             "wape": row.get("WAPE"),

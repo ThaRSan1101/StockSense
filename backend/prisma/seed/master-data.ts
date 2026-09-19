@@ -152,6 +152,8 @@ export function generateMasterData(random: SeededRandom) {
     { name: 'Writing Instruments', categoryName: 'Stationery & School', description: 'Pens, pencils, markers' },
     { name: 'Cake Ingredients', categoryName: 'Baking & Festival Special', description: 'Vanilla, baking powder, yeast, plums' },
     { name: 'Spices & Condiments', categoryName: 'Grocery Essentials', description: 'Chilli powder, turmeric, pepper' },
+    { name: 'Sauces & Condiments', categoryName: 'Grocery Essentials', description: 'Tomato ketchup, chilli sauces, and dressings' },
+    { name: 'Fresh Milk & Dairy', categoryName: 'Dairy & Beverages', description: 'Pasteurized fresh milk, yogurt, curd, and butter' },
     { name: 'Soya & Vegetarian', categoryName: 'Grocery Essentials', description: 'Lanka Soy, TVP products' },
     { name: 'Noodles & Pasta', categoryName: 'Grocery Essentials', description: 'Harischandra noodles, Prima noodles' },
     { name: 'Batteries & Bulbs', categoryName: 'Home Accessories', description: 'Panasonic batteries, Orange bulbs' },
@@ -191,6 +193,15 @@ export function generateMasterData(random: SeededRandom) {
     { name: 'Velvet', description: 'Hemas soap brand' },
     { name: 'Diva', description: 'Hemas laundry brand' },
     { name: 'Ritzbury', description: 'CBL Chocolates' },
+    { name: 'Nestle', description: 'Nestle Lanka Dairy & Beverages' },
+    { name: 'Pelwatte', description: 'Pelwatte Dairy & Sugar' },
+    { name: 'Smak', description: 'Country Style Fruit Drinks' },
+    { name: 'Sunsilk', description: 'Unilever Hair Care' },
+    { name: 'Vim', description: 'Unilever Dishwash Brand' },
+    { name: 'Ambewela', description: 'Lanka Milk Foods Fresh Dairy' },
+    { name: 'Heinz', description: 'Kraft Heinz Sauces' },
+    { name: 'Ferrero', description: 'Ferrero Hazelnut & Chocolate' },
+    { name: 'Lanka Organics', description: 'Local Organic Essentials & Grains' },
   ];
 
   const brands: BrandInput[] = brandsRaw.map((b, idx) => ({

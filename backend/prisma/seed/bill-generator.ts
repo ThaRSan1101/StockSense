@@ -2,6 +2,7 @@ import { PaymentMethod, ApprovalStatus } from '@prisma/client';
 import { SeededRandom } from './deterministic-random.js';
 import { ProductCatalogItem } from './product-catalog.js';
 import { DiscountInput } from './discount-generator.js';
+import { getHistoricalTemporalFactor } from './grn-generator.js';
 
 export interface BillInput {
   id: string;
@@ -31,6 +32,19 @@ export interface BillItemInput {
 
 let billCounter = 0;
 
+// Authentic retail affinity pairs: Primary product name -> potential companion product names
+const AFFINITY_MAP: Record<string, string[]> = {
+  'Watawala Kahata Tea 200g': ['White Sugar', 'Maliban Ginger Biscuits 200g'],
+  'Dilmah Premium Tea 200g': ['White Sugar', 'Munchee Cream Cracker 190g'],
+  'Anchor Milk Powder 400g': ['White Sugar'],
+  'Pelwatte Milk Powder 400g': ['White Sugar'],
+  'Atlas CR Book 80 pgs': ['Atlas Blue Gel Pen'],
+  'Harischandra Instant Noodles 350g': ['Lanka Soy Chicken Flavor 90g'],
+  'Prima Special Noodles 350g': ['Lanka Soy Chicken Flavor 90g'],
+  'Munchee Cream Cracker 190g': ['Highland Salted Butter 200g', 'Watawala Kahata Tea 200g'],
+  'Sunlight Detergent Powder 1Kg': ['Vim Dishwash Bar 100g', 'Sunlight Soap 120g'],
+};
+
 export function generateDailyBills(
   date: Date,
   products: ProductCatalogItem[],
@@ -45,6 +59,8 @@ export function generateDailyBills(
 ): { bills: BillInput[]; billItems: BillItemInput[] } {
   const bills: BillInput[] = [];
   const billItems: BillItemInput[] = [];
+
+  const temporalFactor = getHistoricalTemporalFactor(date);
 
   // Filter products that are active and launched
   const availableProducts = products.filter((p) => {
@@ -122,12 +138,12 @@ export function generateDailyBills(
       break;
     }
 
-    // Pick N products weighted by remaining demand
+    // Pick N products weighted by remaining demand + market-basket affinity
     const chosenProducts: ProductCatalogItem[] = [];
     const tempCandidates = [...candidateProducts];
     const itemsToPick = Math.min(itemTypeCount, tempCandidates.length);
 
-    for (let i = 0; i < itemsToPick; i++) {
+    for (let i = 0; i < itemsToPick && chosenProducts.length < 8; i++) {
       // Weighted pick based on remaining demand
       let totalWeight = 0;
       tempCandidates.forEach((p) => {
@@ -148,8 +164,25 @@ export function generateDailyBills(
         }
       }
 
-      chosenProducts.push(tempCandidates[chosenIdx]);
+      const chosen = tempCandidates[chosenIdx];
+      chosenProducts.push(chosen);
       tempCandidates.splice(chosenIdx, 1);
+
+      // Market-Basket Affinity check: Roll to include companion product
+      const companions = AFFINITY_MAP[chosen.name];
+      if (companions && companions.length > 0 && random.next() < 0.60 && chosenProducts.length < 8) {
+        const companionName = random.pick(companions);
+        const compIdx = tempCandidates.findIndex(
+          (c) =>
+            c.name === companionName &&
+            (runningStock.get(c.sku) || 0) > 0 &&
+            (dailyDemands.get(c.sku) || 0) > 0
+        );
+        if (compIdx !== -1) {
+          chosenProducts.push(tempCandidates[compIdx]);
+          tempCandidates.splice(compIdx, 1);
+        }
+      }
     }
 
     if (chosenProducts.length === 0) continue;
@@ -183,6 +216,9 @@ export function generateDailyBills(
         dailyDemands.set(prod.sku, Math.max(0, remainingDemand - qty));
       }
 
+      // Temporal unit price based on controlled annual progression
+      const unitPrice = Math.round(prod.sellingPrice * temporalFactor);
+
       // Check seasonal/daily discount
       let discountId: string | null = null;
       let discountValue: number | null = null;
@@ -190,10 +226,9 @@ export function generateDailyBills(
       const activeDisc = skuToDiscountMap.get(prod.sku);
       if (activeDisc) {
         discountId = activeDisc.id;
-        discountValue = Math.round(prod.sellingPrice * (activeDisc.discountValue / 100));
+        discountValue = Math.round(unitPrice * (activeDisc.discountValue / 100));
       }
 
-      const unitPrice = prod.sellingPrice;
       const totalItemDiscount = (discountValue || 0) * qty;
       const itemSubtotal = unitPrice * qty;
       const itemTotal = itemSubtotal - totalItemDiscount;
@@ -253,6 +288,9 @@ export function generateDailyBills(
         }
       }
     });
+
+    // Recompute item discount total to eliminate float precision drift
+    billItemDiscountTotal = currentBillItems.reduce((sum, bi) => sum + ((bi.discountValue || 0) * bi.qty), 0);
 
     // Apply Bill-level Discounts if subtotal exceeds threshold
     let billLevelDiscount = 0;
