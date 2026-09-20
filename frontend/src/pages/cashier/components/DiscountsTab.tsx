@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ShoppingCart, Search, Sparkles, Flame, Calendar } from 'lucide-react';
+import { ShoppingCart, Search, Sparkles, Flame, Calendar, Clock } from 'lucide-react';
 
 interface DiscountsTabProps {
   discounts: any[];
@@ -32,7 +32,6 @@ export const DiscountsTab: React.FC<DiscountsTabProps> = ({
         if (d.type !== 'COMBO') return false;
         if (!d.isActive || d.approvalStatus !== 'APPROVED') return false;
         if (d.endDate && d.endDate < todayStr) return false;
-        if (d.startDate && d.startDate > todayStr) return false;
         return !existingIds.has(d.id);
       })
       .map(d => {
@@ -84,7 +83,6 @@ export const DiscountsTab: React.FC<DiscountsTabProps> = ({
       if (d.type !== 'SEASONAL') return false;
       if (!d.isActive || d.approvalStatus !== 'APPROVED') return false;
       if (d.endDate && d.endDate < todayStr) return false;
-      if (d.startDate && d.startDate > todayStr) return false;
       return true;
     });
   }, [discounts]);
@@ -99,7 +97,6 @@ export const DiscountsTab: React.FC<DiscountsTabProps> = ({
       if (d.type !== 'DAILY') return false;
       if (!d.isActive || d.approvalStatus !== 'APPROVED') return false;
       if (d.endDate && d.endDate < todayStr) return false;
-      if (d.startDate && d.startDate > todayStr) return false;
       return true;
     }).forEach(discount => {
       // 1. Check direct discount.products array (populated by backend endpoint)
@@ -421,23 +418,53 @@ export const DiscountsTab: React.FC<DiscountsTabProps> = ({
 
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                   {filteredSeasonalCampaigns.map((discount: any) => {
-                    const packageProds = (discount.productIds || []).map((skuId: string) => 
-                      products.find(p => p.sku === skuId || p.id === skuId)
-                    ).filter(Boolean);
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    const isUpcoming = Boolean(discount.startDate && discount.startDate > todayStr);
+
+                    const packageProds = (discount.productIds || []).map((skuId: string) => {
+                      const found = products.find(p => p.sku === skuId || p.id === skuId);
+                      if (found) return found;
+                      const dp = (discount.products || []).find((p: any) => p.sku === skuId);
+                      if (dp) {
+                        return {
+                          id: dp.sku,
+                          sku: dp.sku,
+                          name: dp.name,
+                          price: dp.sellingPrice,
+                          sellingPrice: dp.sellingPrice,
+                          currentStock: dp.currentStock,
+                          image: dp.imageUrl
+                        };
+                      }
+                      return null;
+                    }).filter(Boolean);
 
                     return (
                       <div key={discount.id} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.02)] hover:shadow-md transition-all flex flex-col justify-between space-y-4">
                         <div>
                           <div className="flex justify-between items-start gap-2 mb-2">
                             <div>
-                              <span className="inline-flex items-center gap-1 bg-emerald-50 text-[#103e2c] text-[10px] font-black uppercase px-2 py-0.5 rounded border border-emerald-200/80 mb-1">
-                                <Calendar className="w-2.5 h-2.5" />
-                                {discount.label || 'Seasonal Offer'}
-                              </span>
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span className="inline-flex items-center gap-1 bg-emerald-50 text-[#103e2c] text-[10px] font-black uppercase px-2 py-0.5 rounded border border-emerald-200/80">
+                                  <Calendar className="w-2.5 h-2.5" />
+                                  {discount.label || 'Seasonal Offer'}
+                                </span>
+                                {isUpcoming ? (
+                                  <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded border border-amber-200">
+                                    <Clock className="w-2.5 h-2.5" />
+                                    Starts {discount.startDate}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 bg-emerald-100/70 text-emerald-800 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded">
+                                    Active Now
+                                  </span>
+                                )}
+                              </div>
                               <h3 className="font-extrabold text-gray-900 text-sm leading-snug">{discount.name}</h3>
                               {discount.endDate && (
                                 <p className="text-[10px] text-gray-400 font-medium mt-0.5">
-                                  Valid till: {discount.endDate}
+                                  Valid: {discount.startDate ? `${discount.startDate} to ` : ''}{discount.endDate}
+                                  {isUpcoming && <span className="text-amber-600 font-bold ml-1.5">(Starts soon)</span>}
                                 </p>
                               )}
                             </div>
@@ -453,14 +480,15 @@ export const DiscountsTab: React.FC<DiscountsTabProps> = ({
                             </p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                               {packageProds.map((prod: any, idx: number) => {
-                                const discountedPrice = prod.price * (1 - discount.discountValue / 100);
+                                const prodPrice = prod.price ?? prod.sellingPrice ?? 0;
+                                const discountedPrice = prodPrice * (1 - discount.discountValue / 100);
                                 return (
                                   <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-white border border-gray-100 shadow-xs">
                                     <div className="min-w-0 pr-2">
                                       <p className="text-xs font-bold text-gray-800 truncate">{prod.name}</p>
                                       <div className="flex items-baseline gap-1">
                                         <span className="text-[11px] font-black text-emerald-800">Rs. {discountedPrice.toFixed(0)}</span>
-                                        <span className="text-[9px] text-gray-400 line-through">Rs. {prod.price.toFixed(0)}</span>
+                                        <span className="text-[9px] text-gray-400 line-through">Rs. {prodPrice.toFixed(0)}</span>
                                       </div>
                                     </div>
                                     {addSingleDiscountProduct && (
@@ -483,7 +511,10 @@ export const DiscountsTab: React.FC<DiscountsTabProps> = ({
                         {/* Footer & Add All to Cart */}
                         <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-4">
                           <span className="text-[10px] font-bold text-emerald-800">
-                            {discount.discountValue}% Promotional Discount Applied
+                            {isUpcoming
+                              ? `Scheduled promotional deal (${discount.discountValue}% OFF)`
+                              : `${discount.discountValue}% Promotional Discount Applied`
+                            }
                           </span>
 
                           <button

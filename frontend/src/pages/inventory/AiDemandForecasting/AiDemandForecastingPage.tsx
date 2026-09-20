@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import Sidebar from '../Shared/Sidebar';
 import InventoryHeader from '../Shared/InventoryHeader';
@@ -48,6 +49,7 @@ export default function AiDemandForecastingPage() {
   const [selectedSku, setSelectedSku] = useState<string | null>(null);
   const [productDetail, setProductDetail] = useState<ProductForecastDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState<boolean>(false);
+  const [isExplanationExpanded, setIsExplanationExpanded] = useState<boolean>(false);
 
   // Total status counts and recommended purchase products count
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
@@ -223,6 +225,7 @@ export default function AiDemandForecastingPage() {
     if (!selectedRunId) return;
     try {
       setSelectedSku(sku);
+      setIsExplanationExpanded(false);
       setDetailLoading(true);
       const detail = await aiDemandService.getProductForecastDetail(selectedRunId, sku);
       setProductDetail(detail);
@@ -381,8 +384,8 @@ export default function AiDemandForecastingPage() {
             </div>
 
             {/* Confirmation Regeneration Modal */}
-            {showConfirm && (
-              <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            {showConfirm && createPortal(
+              <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
                 <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
                   <div className="flex items-center gap-3 text-amber-500 mb-3">
                     <span className="material-symbols-outlined text-[28px]">warning</span>
@@ -406,7 +409,8 @@ export default function AiDemandForecastingPage() {
                     </button>
                   </div>
                 </div>
-              </div>
+              </div>,
+              document.body
             )}
 
             {/* No Data State */}
@@ -543,7 +547,7 @@ export default function AiDemandForecastingPage() {
                         <th className="py-3 px-4 cursor-pointer" onClick={() => { setSortBy('predictedDemand'); setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc'); }}>Predicted Monthly Demand</th>
                         <th className="py-3 px-4 cursor-pointer" onClick={() => { setSortBy('recommendedQuantity'); setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc'); }}>Safety / Recommended Order</th>
                         <th className="py-3 px-4">Prediction Reason</th>
-                        <th className="py-3 px-4">Selected Model / Monthly WAPE</th>
+                        <th className="py-3 px-4">Selected Model / Accuracy</th>
                         <th className="py-3 px-4 text-center">Status</th>
                       </tr>
                     </thead>
@@ -592,7 +596,7 @@ export default function AiDemandForecastingPage() {
                             </td>
                             <td className="py-3 px-4 font-medium text-slate-600">
                               <p className="font-bold text-slate-700">{row.selectedModel}</p>
-                              <p className="text-[10px] text-slate-400 font-bold mt-0.5">Monthly WAPE: {row.accuracyScore !== null && row.accuracyScore !== undefined ? `${(100 - row.accuracyScore).toFixed(1)}%` : 'N/A'}</p>
+                              <p className="text-[10px] text-slate-400 font-bold mt-0.5">Accuracy: {row.accuracyScore !== null && row.accuracyScore !== undefined ? `${row.accuracyScore.toFixed(1)}%` : 'N/A'}</p>
                             </td>
                             <td className="py-3 px-4 text-center">
                               {row.status === 'CRITICAL_ACTION' && (
@@ -653,9 +657,9 @@ export default function AiDemandForecastingPage() {
             )}
 
             {/* Product Insight Drawer Modal */}
-            {selectedSku && (
+            {selectedSku && createPortal(
               <div
-                className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
                 onClick={() => setSelectedSku(null)}
               >
                 <div
@@ -798,12 +802,26 @@ export default function AiDemandForecastingPage() {
                       </div>
 
                       {/* Explanation details card */}
-                      <div className="bg-[#0b8252]/5 p-4 rounded-xl border border-[#0b8252]/10 space-y-2">
-                        <div className="flex items-center gap-1.5 text-[#0b8252] text-[10px] font-black uppercase tracking-wider">
-                          <span className="material-symbols-outlined text-[15px]">info</span>
-                          Evidence-Based Explanation
+                      <div className="bg-[#0b8252]/5 p-4 rounded-xl border border-[#0b8252]/10 space-y-2 transition-all">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-[#0b8252] text-[10px] font-black uppercase tracking-wider">
+                            <span className="material-symbols-outlined text-[15px]">info</span>
+                            Evidence-Based Explanation
+                          </div>
+                          {productDetail.predictionReason && productDetail.predictionReason.length > 120 && (
+                            <button
+                              type="button"
+                              onClick={() => setIsExplanationExpanded(prev => !prev)}
+                              className="text-[11px] font-bold text-[#0b8252] hover:text-[#0b8252]/80 inline-flex items-center gap-0.5 transition-colors cursor-pointer"
+                            >
+                              <span>{isExplanationExpanded ? 'Show less' : 'Read more'}</span>
+                              <span className="material-symbols-outlined text-[15px]">
+                                {isExplanationExpanded ? 'expand_less' : 'expand_more'}
+                              </span>
+                            </button>
+                          )}
                         </div>
-                        <p className="text-xs text-slate-600 leading-relaxed font-semibold">
+                        <p className={`text-xs text-slate-600 leading-relaxed font-semibold transition-all ${isExplanationExpanded ? '' : 'line-clamp-2'}`}>
                           {productDetail.predictionReason}
                         </p>
                       </div>
@@ -940,7 +958,8 @@ export default function AiDemandForecastingPage() {
                     </div>
                   ) : null}
                 </div>
-              </div>
+              </div>,
+              document.body
             )}
 
           </div>

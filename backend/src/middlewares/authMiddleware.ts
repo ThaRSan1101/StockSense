@@ -25,6 +25,23 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
   }
 }
 
+// Optional authentication middleware: attaches req.user if valid token provided
+export function optionalAuthenticate(req: AuthRequest, _res: Response, next: NextFunction): void {
+  const authHeader = req.headers.authorization
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1]
+    try {
+      const decoded = verifyAccessToken(token)
+      req.user = decoded
+    } catch {
+      // Invalid/expired token: leave req.user undefined
+    }
+  }
+
+  next()
+}
+
 // Role-based access control middleware
 export function requireRole(...roles: string[]) {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {

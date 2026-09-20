@@ -19,13 +19,23 @@ export const getCategories = async (_req: Request, res: Response): Promise<void>
   }
 };
 
+// Helper to decode HTML entities like &amp; created by XSS sanitizers
+const decodeHtmlEntities = (val?: string | null): string | undefined => {
+  if (val === undefined || val === null) return undefined;
+  let str = val;
+  while (str.includes('&amp;')) {
+    str = str.replace(/&amp;/g, '&');
+  }
+  return str.trim();
+};
+
 // Create a new category
 export const createCategory = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, description, categoryImageUrl } = req.body;
-    const cleanName = name?.trim();
-    const cleanDescription = description?.trim() || null;
-    const cleanImageUrl = categoryImageUrl?.trim() || null;
+    const cleanName = decodeHtmlEntities(name);
+    const cleanDescription = decodeHtmlEntities(description) || null;
+    const cleanImageUrl = decodeHtmlEntities(categoryImageUrl) || null;
 
     if (!cleanName) {
       res.status(400).json({ success: false, message: 'Category name is required' });
@@ -67,9 +77,9 @@ export const updateCategory = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const cleanName = name !== undefined ? name?.trim() : undefined;
-    const cleanDescription = description !== undefined ? description?.trim() : undefined;
-    const cleanImageUrl = categoryImageUrl !== undefined ? categoryImageUrl?.trim() : undefined;
+    const cleanName = name !== undefined ? decodeHtmlEntities(name) : undefined;
+    const cleanDescription = description !== undefined ? decodeHtmlEntities(description) : undefined;
+    const cleanImageUrl = categoryImageUrl !== undefined ? decodeHtmlEntities(categoryImageUrl) : undefined;
 
     if (cleanName !== undefined && !cleanName) {
       res.status(400).json({ success: false, message: 'Category name cannot be empty.' });
@@ -118,8 +128,8 @@ export const updateCategory = async (req: Request, res: Response): Promise<void>
 export const createSubCategory = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, description, categoryId } = req.body;
-    const cleanName = name?.trim();
-    const cleanDescription = description?.trim() || null;
+    const cleanName = decodeHtmlEntities(name);
+    const cleanDescription = decodeHtmlEntities(description) || null;
 
     if (!cleanName || !categoryId) {
       res.status(400).json({ success: false, message: 'Name and categoryId are required' });
@@ -161,8 +171,8 @@ export const updateSubCategory = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const cleanName = name !== undefined ? name?.trim() : undefined;
-    const cleanDescription = description !== undefined ? description?.trim() : undefined;
+    const cleanName = name !== undefined ? decodeHtmlEntities(name) : undefined;
+    const cleanDescription = description !== undefined ? decodeHtmlEntities(description) : undefined;
 
     if (cleanName !== undefined && !cleanName) {
       res.status(400).json({ success: false, message: 'Subcategory name cannot be empty.' });

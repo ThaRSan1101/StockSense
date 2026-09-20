@@ -1,5 +1,7 @@
 import React from 'react';
-import { Search, ScanLine, ShoppingCart, Trash2, FileText, Minus, Plus, ChevronRight, Tag } from 'lucide-react';
+import { Search, ScanLine, ShoppingCart, Trash2, FileText, Minus, Plus, ChevronRight, Tag, Barcode } from 'lucide-react';
+import { toast } from 'sonner';
+import { playSuccessBeep, playErrorBeep } from '../../../utils/audio';
 
 interface BillTabProps {
   searchQuery: string;
@@ -43,10 +45,12 @@ export const BillTab: React.FC<BillTabProps> = ({
   products, addToCart, setShowBarcodeModal,
   scannedProduct, setScannedProduct,
   scannedProductQty, setScannedProductQty,
-  cart, setCart, cartWithDiscounts, passBillToDraft,
-  discountType, setDiscountType, setManualDiscount, setDiscountInput,
-  isOverallDiscountActive, autoBillDiscount, manualDiscount,
-  customerPaidInput, setCustomerPaidInput,
+  cart, setCart,
+  cartWithDiscounts, passBillToDraft,
+  discountType, setDiscountType,
+  setManualDiscount, setDiscountInput,
+  isOverallDiscountActive, autoBillDiscount,
+  manualDiscount, customerPaidInput, setCustomerPaidInput,
   grossTotal, totalSavedAmount, total, handleCompleteTransaction,
   updateQuantity, ungroupCombo
 }) => {
@@ -58,25 +62,56 @@ export const BillTab: React.FC<BillTabProps> = ({
           <Search className="w-5 h-5 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search product by name or SKU..."
-            className="w-full bg-[#f3f4f6] text-gray-800 rounded-lg pl-12 pr-4 py-3 focus:outline-none transition-all font-medium border border-transparent focus:border-gray-300"
+            placeholder="Scan barcode, or search by name / SKU..."
+            className="w-full bg-[#f3f4f6] text-gray-800 rounded-xl pl-12 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium border border-transparent"
             value={searchQuery}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && searchMatches.length > 0) {
-                const firstMatch = searchMatches[0];
-                const qty = searchMatchQuantities[firstMatch.id] || 1;
-                addToCart(firstMatch, qty);
-                setSearchMatches([]);
-                setSearchQuery('');
+              if (e.key === 'Enter') {
+                const val = searchQuery.trim();
+                if (!val) return;
+
+                // 1. First prioritize exact barcode or SKU match
+                const exactMatch = products.find(p =>
+                  (p.barcode && p.barcode.toString().trim().toLowerCase() === val.toLowerCase()) ||
+                  (p.sku && p.sku.toString().trim().toLowerCase() === val.toLowerCase()) ||
+                  p.name.toLowerCase() === val.toLowerCase()
+                );
+
+                if (exactMatch) {
+                  playSuccessBeep();
+                  addToCart(exactMatch, 1);
+                  toast.success(`Scanned: ${exactMatch.name} (Added to cart)`);
+                  setSearchMatches([]);
+                  setSearchQuery('');
+                  return;
+                }
+
+                // 2. If filtered matches exist, add the first match
+                if (searchMatches.length > 0) {
+                  const firstMatch = searchMatches[0];
+                  const qty = searchMatchQuantities[firstMatch.id] || 1;
+                  playSuccessBeep();
+                  addToCart(firstMatch, qty);
+                  toast.success(`Added ${firstMatch.name} to cart`);
+                  setSearchMatches([]);
+                  setSearchQuery('');
+                  return;
+                }
+
+                // 3. No match found
+                playErrorBeep();
+                toast.error(`No product found for "${val}"`);
               }
             }}
             onChange={(e) => {
               const val = e.target.value;
               setSearchQuery(val);
-              if (val.length > 1) {
+              if (val.trim().length > 0) {
+                const query = val.trim().toLowerCase();
                 const matches = products.filter(p =>
-                  p.name.toLowerCase().includes(val.toLowerCase()) ||
-                  (p.barcode && p.barcode.includes(val))
+                  p.name.toLowerCase().includes(query) ||
+                  (p.barcode && p.barcode.toString().toLowerCase().includes(query)) ||
+                  (p.sku && p.sku.toString().toLowerCase().includes(query))
                 ).slice(0, 5);
                 setSearchMatches(matches);
               } else {
@@ -84,13 +119,24 @@ export const BillTab: React.FC<BillTabProps> = ({
               }
             }}
           />
+          {searchQuery && (
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setSearchMatches([]);
+              }}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+            >
+              &times;
+            </button>
+          )}
         </div>
         <div className="flex items-center shrink-0">
           <button
             onClick={() => setShowBarcodeModal(true)}
-            className="flex items-center px-6 py-3 bg-[#e0e7ff] text-[#1e3a8a] rounded-lg font-bold hover:bg-[#c7d2fe] transition-colors text-sm"
+            className="flex items-center px-5 py-3 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl font-bold transition-all text-sm border border-blue-200 shadow-sm"
           >
-            <ScanLine className="w-4 h-4 mr-2" /> Scan Barcode
+            <ScanLine className="w-4 h-4 mr-2 text-blue-600" /> Scan Barcode
           </button>
         </div>
       </div>

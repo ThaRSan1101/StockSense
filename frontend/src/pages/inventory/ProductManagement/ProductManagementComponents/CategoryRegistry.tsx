@@ -213,9 +213,9 @@ export default function CategoryRegistry({
     setEditingCategory(cat);
     setEditingSubcategory(null);
     setHierarchy('parent');
-    setCategoryName(cat.name);
-    setCategoryDescription(cat.description || '');
-    setCategoryImage(cat.image || null);
+    setCategoryName(cat.name.replace(/&amp;/g, '&'));
+    setCategoryDescription((cat.description || '').replace(/&amp;/g, '&'));
+    setCategoryImage(cat.image ? cat.image.replace(/&amp;/g, '&') : null);
     setDuplicateError(null);
     setIsModalOpen(true);
   };
@@ -225,7 +225,7 @@ export default function CategoryRegistry({
     setEditingSubcategory({parent, sub});
     setHierarchy('sub');
     setParentCatId(parent.id);
-    setCategoryName(sub.name);
+    setCategoryName(sub.name.replace(/&amp;/g, '&'));
     setCategoryDescription('');
     setCategoryImage(null);
     setDuplicateError(null);
@@ -233,7 +233,7 @@ export default function CategoryRegistry({
   };
 
   const handleSave = () => {
-    const trimmed = categoryName.trim();
+    const trimmed = categoryName.replace(/&amp;/g, '&').trim();
     if (!trimmed) { toast.error('Please enter a valid category name.'); return; }
     if (trimmed.length > 50) {
       toast.error('Category name must be 50 characters or less.');

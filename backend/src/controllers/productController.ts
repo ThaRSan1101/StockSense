@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { ProductStatus } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
 
@@ -11,8 +12,12 @@ const mapStatus = (statusStr?: string): ProductStatus => {
   return ProductStatus.ACTIVE;
 };
 
-export const getProducts = async (req: Request, res: Response): Promise<void> => {
+export const getProducts = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const userRole = req.user?.role;
+    const isInternalStaff = userRole === 'ADMIN' || userRole === 'INVENTORY_MANAGER';
+    const isCashier = userRole === 'CASHIER';
+
     const products = await prisma.product.findMany({
       include: {
         masterClass: {
@@ -20,13 +25,67 @@ export const getProducts = async (req: Request, res: Response): Promise<void> =>
             category: true,
             subCategory: true,
             brand: true,
-            supplier: true
+            supplier: isInternalStaff
           }
         }
       },
       orderBy: { createdAt: 'desc' }
     });
-    res.status(200).json({ success: true, data: products });
+
+    // 1. Authenticated ADMIN / INVENTORY_MANAGER receives full internal fields
+    if (isInternalStaff) {
+      res.status(200).json({ success: true, data: products });
+      return;
+    }
+
+    // 2. Authenticated CASHIER receives stock for POS checkout, but NO costPrice or supplier info
+    if (isCashier) {
+      const cashierProducts = products.map((p) => {
+        const { costPrice, ...rest } = p;
+        return {
+          ...rest,
+          masterClass: rest.masterClass ? {
+            id: rest.masterClass.id,
+            name: rest.masterClass.name,
+            categoryId: rest.masterClass.categoryId,
+            subCategoryId: rest.masterClass.subCategoryId,
+            brandId: rest.masterClass.brandId,
+            category: rest.masterClass.category,
+            subCategory: rest.masterClass.subCategory,
+            brand: rest.masterClass.brand,
+          } : undefined
+        };
+      });
+      res.status(200).json({ success: true, data: cashierProducts });
+      return;
+    }
+
+    // 3. Public / Unauthenticated: return ONLY safe public fields (NO costPrice, currentStock, reorderLevel, or supplier)
+    const publicProducts = products.map((p) => ({
+      sku: p.sku,
+      barcode: p.barcode,
+      name: p.name,
+      unitType: p.unitType,
+      sellingPrice: p.sellingPrice,
+      discount: p.discount,
+      imageUrl: p.imageUrl,
+      seasonal: p.seasonal,
+      status: p.status,
+      variantAttributeType: p.variantAttributeType,
+      mfgDate: p.mfgDate,
+      expiryDate: p.expiryDate,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+      masterClass: p.masterClass ? {
+        id: p.masterClass.id,
+        name: p.masterClass.name,
+        category: p.masterClass.category,
+        subCategory: p.masterClass.subCategory,
+        brand: p.masterClass.brand,
+      } : undefined
+    }));
+
+    res.status(200).json({ success: true, data: publicProducts });
   } catch (error) {
     console.error('Error fetching products:', error);
     res.status(500).json({ success: false, message: 'Server Error' });

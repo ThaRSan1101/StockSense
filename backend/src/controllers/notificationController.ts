@@ -2,6 +2,30 @@ import { Response } from 'express';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { NotificationService } from '../services/notificationService.js';
 import { NotificationType, NotificationSeverity, Role } from '@prisma/client';
+import { z } from 'zod';
+
+const createNotificationSchema = z.object({
+  type: z.enum([
+    'DISCOUNT_APPROVAL',
+    'DISCOUNT_RESPONSE',
+    'LOW_STOCK',
+    'OUT_OF_STOCK',
+    'OVERSTOCK',
+    'EXPIRING_SOON',
+    'EXPIRED',
+    'DEMAND_FORECAST',
+    'STOCK_VELOCITY',
+    'COMBO_SUGGESTION',
+    'SYSTEM'
+  ]),
+  severity: z.enum(['CRITICAL', 'WARNING', 'INFO']).optional().default('INFO'),
+  title: z.string().trim().min(1, 'Title is required'),
+  message: z.string().trim().min(1, 'Message is required'),
+  sku: z.string().trim().optional().nullable(),
+  suggestedAction: z.string().trim().optional().nullable(),
+  metadata: z.any().optional().nullable(),
+  targetRole: z.enum(['ADMIN', 'INVENTORY_MANAGER', 'CASHIER']).optional().nullable(),
+});
 
 // Get notifications for currently logged-in user
 export const getNotifications = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -69,6 +93,13 @@ export const dismissNotification = async (req: AuthRequest, res: Response): Prom
 // Create a new notification (API Endpoint mainly for FastAPI AI Service to inject alerts)
 export const createNotificationApi = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const parseResult = createNotificationSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      const errorMessage = parseResult.error.issues.map((issue) => issue.message).join(' ');
+      res.status(400).json({ success: false, message: errorMessage || 'Invalid notification data.' });
+      return;
+    }
+
     const {
       type,
       severity,
@@ -78,27 +109,22 @@ export const createNotificationApi = async (req: AuthRequest, res: Response): Pr
       suggestedAction,
       metadata,
       targetRole
-    } = req.body;
-
-    if (!type || !title || !message) {
-      res.status(400).json({ success: false, message: 'Type, title and message are required.' });
-      return;
-    }
+    } = parseResult.data;
 
     const notification = await NotificationService.createNotification({
-      type: type as NotificationType,
-      severity: severity as NotificationSeverity,
+      type,
+      severity,
       title,
       message,
-      sku,
-      suggestedAction,
-      metadata,
-      targetRole: targetRole as Role
+      sku: sku || undefined,
+      suggestedAction: suggestedAction || undefined,
+      metadata: metadata || undefined,
+      targetRole: targetRole || undefined
     });
 
     res.status(201).json({ success: true, data: notification });
   } catch (error: any) {
     console.error('Error creating API notification:', error);
-    res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
+    res.status(500).json({ success: false, message: 'Internal server error.' });
   }
 };

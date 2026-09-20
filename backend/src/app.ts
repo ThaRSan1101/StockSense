@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import express, { Request, Response } from 'express'
+import express, { Request, Response, NextFunction } from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
@@ -40,6 +40,32 @@ app.use(express.urlencoded({ extended: true, limit: '5mb' }))
 // Sanitize data (Prevent XSS attacks)
 import { xss } from 'express-xss-sanitizer'
 app.use(xss()) // Strip malicious HTML/JS tags from req.body, req.query, and req.params
+
+// Decode unintentionally escaped HTML entities (such as &amp;) created by xss sanitizer
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  const decodeEntities = (obj: any): any => {
+    if (typeof obj === 'string') {
+      let str = obj;
+      while (str.includes('&amp;')) {
+        str = str.replace(/&amp;/g, '&');
+      }
+      return str;
+    }
+    if (Array.isArray(obj)) {
+      return obj.map(decodeEntities);
+    }
+    if (obj !== null && typeof obj === 'object') {
+      for (const key of Object.keys(obj)) {
+        obj[key] = decodeEntities(obj[key]);
+      }
+    }
+    return obj;
+  };
+
+  if (req.body) req.body = decodeEntities(req.body);
+  if (req.params) req.params = decodeEntities(req.params);
+  next();
+})
 
 // Rate limiting for auth routes (max 1000 requests per 15 mins for development)
 const authLimiter = rateLimit({

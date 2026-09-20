@@ -41,6 +41,19 @@ export const createBill = async (req: AuthRequest, res: Response): Promise<void>
     });
     const productMap = new Map(products.map(p => [p.sku, p]));
 
+    // 3. Verify discount IDs to ensure foreign key constraint integrity
+    const candidateDiscountIds = items
+      .map((i: any) => i.discountId)
+      .filter((id: any): id is string => typeof id === 'string' && id.trim().length > 0);
+
+    const validDiscounts = candidateDiscountIds.length > 0
+      ? await prisma.discount.findMany({
+          where: { id: { in: candidateDiscountIds } },
+          select: { id: true }
+        })
+      : [];
+    const validDiscountIdSet = new Set(validDiscounts.map(d => d.id));
+
     let calculatedSubtotal = 0;
     let calculatedTotalQty = 0;
     const verifiedItems: any[] = [];
@@ -76,12 +89,16 @@ export const createBill = async (req: AuthRequest, res: Response): Promise<void>
       calculatedSubtotal += (unitPrice * qty);
       calculatedTotalQty += qty;
 
+      const validDiscountId = (item.discountId && validDiscountIdSet.has(item.discountId))
+        ? item.discountId
+        : null;
+
       verifiedItems.push({
         sku: item.sku,
         qty,
         unitPrice,
         total: itemTotal,
-        discountId: item.discountId || null,
+        discountId: validDiscountId,
         discountValue
       });
     }

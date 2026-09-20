@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { aiDemandService, ForecastRun, ProductForecastSummary, ProductForecastDetail } from '../../../../services/aiDemandService';
 
@@ -29,6 +30,7 @@ export default function AiDemandTab({ categories = [] }: AiDemandTabProps) {
   const [selectedSku, setSelectedSku] = useState<string | null>(null);
   const [productDetail, setProductDetail] = useState<ProductForecastDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState<boolean>(false);
+  const [isExplanationExpanded, setIsExplanationExpanded] = useState<boolean>(false);
 
   // Total status counts (across entire run, not just current page)
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
@@ -109,6 +111,7 @@ export default function AiDemandTab({ categories = [] }: AiDemandTabProps) {
     if (!latestRun) return;
     try {
       setSelectedSku(sku);
+      setIsExplanationExpanded(false);
       setDetailLoading(true);
       const detail = await aiDemandService.getProductForecastDetail(latestRun.id, sku);
       setProductDetail(detail);
@@ -167,8 +170,8 @@ export default function AiDemandTab({ categories = [] }: AiDemandTabProps) {
       </div>
 
       {/* Confirmation Modal */}
-      {showConfirm && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      {showConfirm && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3 text-[#0b8252] mb-3">
               <span className="material-symbols-outlined text-[28px]">psychology</span>
@@ -192,7 +195,8 @@ export default function AiDemandTab({ categories = [] }: AiDemandTabProps) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* State Indicators */}
@@ -434,9 +438,9 @@ export default function AiDemandTab({ categories = [] }: AiDemandTabProps) {
       )}
 
       {/* Product Detail Modal/Drawer */}
-      {selectedSku && (
+      {selectedSku && createPortal(
         <div
-          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
           onClick={() => setSelectedSku(null)}
         >
           <div
@@ -470,7 +474,7 @@ export default function AiDemandTab({ categories = [] }: AiDemandTabProps) {
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                     <p className="text-[10px] font-extrabold uppercase text-slate-400">Forecasting Model</p>
                     <p className="text-xs font-bold text-slate-700 mt-1">{productDetail.selectedModel}</p>
-                    <p className="text-[10px] text-slate-500 mt-0.5">WAPE Score: {(productDetail.accuracyScore !== undefined && productDetail.accuracyScore !== null) ? `${(productDetail.accuracyScore * 100).toFixed(1)}%` : 'N/A'}</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Accuracy: {(productDetail.accuracyScore !== undefined && productDetail.accuracyScore !== null) ? `${productDetail.accuracyScore.toFixed(1)}%` : 'N/A'}</p>
                   </div>
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                     <p className="text-[10px] font-extrabold uppercase text-slate-400">Forecast Status</p>
@@ -512,12 +516,26 @@ export default function AiDemandTab({ categories = [] }: AiDemandTabProps) {
                 </div>
 
                 {/* Explanation text */}
-                <div className="bg-[#0b8252]/5 p-4 rounded-xl border border-[#0b8252]/10 space-y-2">
-                  <div className="flex items-center gap-1.5 text-[#0b8252] text-[10px] font-extrabold uppercase">
-                    <span className="material-symbols-outlined text-[14px]">info</span>
-                    Explanation & Reason
+                <div className="bg-[#0b8252]/5 p-4 rounded-xl border border-[#0b8252]/10 space-y-2 transition-all">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-[#0b8252] text-[10px] font-extrabold uppercase">
+                      <span className="material-symbols-outlined text-[14px]">info</span>
+                      Explanation & Reason
+                    </div>
+                    {productDetail.predictionReason && productDetail.predictionReason.length > 120 && (
+                      <button
+                        type="button"
+                        onClick={() => setIsExplanationExpanded(prev => !prev)}
+                        className="text-[11px] font-bold text-[#0b8252] hover:text-[#0b8252]/80 inline-flex items-center gap-0.5 transition-colors cursor-pointer"
+                      >
+                        <span>{isExplanationExpanded ? 'Show less' : 'Read more'}</span>
+                        <span className="material-symbols-outlined text-[15px]">
+                          {isExplanationExpanded ? 'expand_less' : 'expand_more'}
+                        </span>
+                      </button>
+                    )}
                   </div>
-                  <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                  <p className={`text-xs text-slate-600 leading-relaxed font-medium transition-all ${isExplanationExpanded ? '' : 'line-clamp-2'}`}>
                     {productDetail.predictionReason}
                   </p>
                 </div>
@@ -579,7 +597,8 @@ export default function AiDemandTab({ categories = [] }: AiDemandTabProps) {
               </div>
             ) : null}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

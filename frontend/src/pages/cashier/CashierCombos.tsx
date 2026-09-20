@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { comboService } from '../../services/comboService';
 import { DiscountService } from '../../services/discountService';
-import { Search, Gift } from 'lucide-react';
+import { Search } from 'lucide-react';
 
 export default function CashierCombos() {
   const [combos, setCombos] = useState<any[]>([]);
@@ -31,7 +31,6 @@ export default function CashierCombos() {
             if (d.type !== 'COMBO') return false;
             if (!d.isActive || d.approvalStatus !== 'APPROVED') return false;
             if (d.endDate && d.endDate < todayStr) return false;
-            if (d.startDate && d.startDate > todayStr) return false;
             return !existingIds.has(d.id);
           })
           .map((d: any) => {

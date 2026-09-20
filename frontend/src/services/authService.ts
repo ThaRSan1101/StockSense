@@ -61,8 +61,8 @@ export const authService = {
     return response.data.data
   },
 
-  async resetPassword(id: string): Promise<{ newPassword: string; emailSent: boolean }> {
-    const response = await api.post<{ success: boolean; message: string; data: { newPassword: string; emailSent: boolean } }>(`/auth/users/${id}/reset-password`)
+  async resetPassword(id: string): Promise<{ emailSent: boolean }> {
+    const response = await api.post<{ success: boolean; message: string; data: { emailSent: boolean } }>(`/auth/users/${id}/reset-password`)
     return response.data.data
   },
 

@@ -2,7 +2,12 @@ import { Response } from 'express';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
 import { prisma } from '../config/prisma.js';
 
-const AI_SERVICE_URL = process.env.AI_DEMAND_SERVICE_URL || process.env.AI_SERVICE_URL || 'http://127.0.0.1:8080/api/ai-demand';
+const getAiDemandServiceUrl = (): string => {
+  const base = (process.env.AI_DEMAND_SERVICE_URL || process.env.AI_SERVICE_URL || 'http://127.0.0.1:8000')
+    .replace(':8080', ':8000')
+    .replace(/\/+$/, '');
+  return base.includes('/api/ai-demand') ? base : `${base}/api/ai-demand`;
+};
 
 export async function generateForecast(req: AuthRequest, res: Response): Promise<void> {
   try {
@@ -16,7 +21,7 @@ export async function generateForecast(req: AuthRequest, res: Response): Promise
 
     // Call Python FastAPI service to trigger forecast generation
     // We send force as true if regenerate is requested
-    const response = await fetch(`${AI_SERVICE_URL}/forecast`, {
+    const response = await fetch(`${getAiDemandServiceUrl()}/forecast`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ targetMonth, force: isForce, regenerate: isForce }),

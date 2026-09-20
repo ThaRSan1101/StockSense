@@ -498,9 +498,8 @@ export async function resetPassword(req: AuthRequest, res: Response): Promise<vo
 
     res.status(200).json({ 
       success: true, 
-      message: 'Password reset successful and email sent.', 
-      // We can also return newPassword here temporarily if the user hasn't configured SMTP yet
-      data: { newPassword, emailSent: !!process.env.SMTP_USER } 
+      message: 'Password reset successfully.', 
+      data: { emailSent: !!process.env.SMTP_USER } 
     })
   } catch (err) {
     console.error('[resetPassword error]', err)

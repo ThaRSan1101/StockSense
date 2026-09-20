@@ -3,8 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import Pagination from '@/components/shared/Pagination';
+import { useAuth } from '@/hooks/useAuth';
 import { inventoryOperationsService, ProductItem, AdjustmentRecord } from './inventoryOperationsService';
-import { api } from '../../../../services/axiosInstance';
 
 const SearchableProductSelect = ({ products, value, onChange }: { products: ProductItem[], value: string, onChange: (val: string) => void }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -120,38 +120,31 @@ export default function StockAdjustments() {
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [adjustments, setAdjustments] = useState<AdjustmentRecord[]>([]);
 
+  const { user } = useAuth();
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-
-  // Operators (admins + managers) for the Authorized Operator dropdown
-  const [operators, setOperators] = useState<{ id: string; name: string; role: string }[]>([]);
 
   // Form state
   const [selectedProductIndex, setSelectedProductIndex] = useState(0);
   const [qtyDelta, setQtyDelta] = useState<number | string>(-1);
   const [selectedReason, setSelectedReason] = useState<'Damaged' | 'Lost' | 'Expired' | 'Returned' | 'Counting error' | 'System correction'>('Damaged');
-  const [adjustedBy, setAdjustedBy] = useState('');
+  const [adjustedBy, setAdjustedBy] = useState(user?.name || '');
 
   // Selected adjustment for detail timeline modal
   const [viewingAdjustment, setViewingAdjustment] = useState<AdjustmentRecord | null>(null);
 
+  // Keep adjustedBy synced with current logged-in user
+  useEffect(() => {
+    if (user?.name) {
+      setAdjustedBy(user.name);
+    }
+  }, [user?.name]);
+
   useEffect(() => {
     loadAdjustmentData();
-    loadOperators();
   }, []);
-
-  const loadOperators = async () => {
-    try {
-      const res = await api.get('/auth/operators');
-      if (res.data?.success && res.data.data?.length > 0) {
-        setOperators(res.data.data);
-        setAdjustedBy(res.data.data[0].name);
-      }
-    } catch (err) {
-      console.error('Failed to load operators:', err);
-    }
-  };
 
   const loadAdjustmentData = async () => {
     const prods = await inventoryOperationsService.getProducts();
@@ -270,12 +263,13 @@ export default function StockAdjustments() {
     }
 
     try {
+      const currentOperator = user?.name || adjustedBy || 'Manager';
       const newAdj = await inventoryOperationsService.createAdjustment({
         productName: activeProduct.name,
         sku: activeProduct.sku,
         qtyChanged: parsedDelta,
         reason: selectedReason,
-        adjustedBy,
+        adjustedBy: currentOperator,
         date: new Date().toISOString().split('T')[0]
       });
 
@@ -386,24 +380,20 @@ export default function StockAdjustments() {
                 </select>
               </div>
 
-              {/* Operator — dropdown of all admins + managers */}
+              {/* Authorized Operator — Current Logged-in User */}
               <div>
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Authorized Operator</label>
-                <select
-                  value={adjustedBy}
-                  onChange={(e) => setAdjustedBy(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#0b8252]"
-                >
-                  {operators.length === 0 ? (
-                    <option value="">Loading operators...</option>
-                  ) : (
-                    operators.map(op => (
-                      <option key={op.id} value={op.name}>
-                        {op.name} ({op.role === 'ADMIN' ? 'Admin' : 'Manager'})
-                      </option>
-                    ))
-                  )}
-                </select>
+                <div className="flex items-center gap-2.5 w-full px-3 py-2 bg-slate-100/80 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 select-none shadow-xs">
+                  <div className="flex items-center justify-center w-5 h-5 rounded-full bg-[#0b8252]/15 text-[#0b8252]">
+                    <span className="material-symbols-outlined text-[14px]">verified_user</span>
+                  </div>
+                  <span className="flex-1 truncate font-bold text-slate-800">
+                    {user?.name || 'Inventory Manager'}
+                  </span>
+                  <span className="text-[10px] font-black text-slate-500 uppercase bg-slate-200/80 px-2 py-0.5 rounded tracking-wide">
+                    {user?.role === 'ADMIN' ? 'Admin' : 'Manager'}
+                  </span>
+                </div>
               </div>
             </div>
 

@@ -1,9 +1,9 @@
 import { useState, useMemo, useContext, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ScanLine, ShoppingCart, LogOut,
+  ShoppingCart, LogOut,
   Plus, Minus, Receipt, FileText,
-  TerminalSquare, Banknote, Gift
+  TerminalSquare, Banknote, Gift, Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AuthContext } from '../../context/AuthContext';
@@ -18,6 +18,8 @@ import { DiscountsTab } from './components/DiscountsTab';
 import { DraftBillsTab } from './components/DraftBillsTab';
 import { OrdersTab } from './components/OrdersTab';
 import { BillTab } from './components/BillTab';
+import { CashierBarcodeScannerModal } from './components/CashierBarcodeScannerModal';
+import { playSuccessBeep } from '../../utils/audio';
 
 // --- MOCK DATA REMOVED ---
 
@@ -252,8 +254,13 @@ export default function POSPage() {
   }, [cart, discounts, products]);
 
   const filteredProducts = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
     return products.filter(product => {
-      const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = !q ||
+        product.name.toLowerCase().includes(q) ||
+        (product.barcode && product.barcode.toString().toLowerCase().includes(q)) ||
+        (product.sku && product.sku.toString().toLowerCase().includes(q));
+
       if (!selectedCategory) return matchesSearch;
 
       const normProdCat = product.category.toLowerCase();
@@ -277,13 +284,22 @@ export default function POSPage() {
   }, [products, searchQuery, selectedCategory]);
 
   // --- CART LOGIC ---
-  const addToCart = (product: any, quantityToAdd: number = 1, overrideDiscount?: number, overrideDiscountId?: string) => {
+  const addToCart = (
+    product: any,
+    quantityToAdd: number = 1,
+    overrideDiscount?: number,
+    overrideDiscountId?: string,
+    quiet: boolean = false
+  ) => {
     // If we add something new, let cashier reconsider declined combos
     setDeclinedCombos([]);
+    let finalQty = quantityToAdd;
+
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
-        return prev.map(item => item.id === product.id ? { ...item, quantity: item.quantity + quantityToAdd } : item);
+        finalQty = existing.quantity + quantityToAdd;
+        return prev.map(item => item.id === product.id ? { ...item, quantity: finalQty } : item);
       }
       return [...prev, {
         ...product,
@@ -293,7 +309,76 @@ export default function POSPage() {
         _discountPinned: overrideDiscount !== undefined // flag to skip auto-recalc
       }];
     });
+
+    try {
+      playSuccessBeep();
+    } catch (_) {}
+
+    if (!quiet) {
+      toast.success(`"${product.name}" added to bill!`, {
+        description: `Quantity in bill: ${finalQty}`,
+        duration: 1800,
+        id: `cart-alert-${product.id}`,
+      });
+    }
   };
+
+  // --- HARDWARE BARCODE SCANNER LISTENER (USB / Bluetooth Handheld Guns) ---
+  useEffect(() => {
+    let buffer = '';
+    let lastKeyTime = Date.now();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isOtherInput = target && 
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') && 
+        !(target as HTMLInputElement).placeholder?.includes('barcode');
+
+      const now = Date.now();
+      const timeDiff = now - lastKeyTime;
+      lastKeyTime = now;
+
+      // Enter key signals end of barcode transmission from hardware scanner
+      if (e.key === 'Enter') {
+        const code = buffer.trim();
+        buffer = '';
+
+        if (code.length >= 3) {
+          const matched = products.find(p =>
+            (p.barcode && p.barcode.toString().trim().toLowerCase() === code.toLowerCase()) ||
+            (p.sku && p.sku.toString().trim().toLowerCase() === code.toLowerCase())
+          );
+
+          if (matched) {
+            e.preventDefault();
+            addToCart(matched, 1, undefined, undefined, true);
+            toast.success(`Scanned: ${matched.name} (Added to bill)`);
+            return;
+          }
+        }
+        return;
+      }
+
+      // If user typed slowly (>80ms), clear buffer
+      if (timeDiff > 80 && buffer.length > 0) {
+        buffer = '';
+      }
+
+      // Capture single printable characters
+      if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        // If an unrelated input (e.g. customer paid or notes) is focused, only capture if typing speed is machine-fast (<45ms)
+        if (isOtherInput && timeDiff > 45 && buffer.length === 0) {
+          return;
+        }
+        buffer += e.key;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [products]);
 
   const updateQuantity = (id: number | string, delta: number) => {
     setCart(prev => prev.map(item => {
@@ -316,7 +401,8 @@ export default function POSPage() {
             qty: ci.qty,
             unitPrice: ci.unitPrice,
             total: ci.unitPrice * ci.qty * (1 - itemDisc / 100),
-            discountId: itemDisc > 0 ? item.discountId : null,
+            discountId: null,
+            comboId: item.comboId || item.discountId || null,
             discountValue: itemDisc
           }));
         } else {
@@ -464,43 +550,57 @@ export default function POSPage() {
     toast.info('Combo Pack ungrouped back to individual items.');
   };
 
-  const applySuggestedCombo = (discount: any) => {
+  const applySuggestedCombo = (combo: any) => {
     setCart(prev => {
+      const comboItems = combo.items || (combo.comboItems?.map((ci: any) => ({
+        sku: ci.productId || ci.product?.sku,
+        qty: ci.minQty || ci.quantity || 1,
+        name: ci.product?.name,
+        unitPrice: ci.normalUnitPrice || ci.unitPrice
+      }))) || [];
+
+      // 1. Deduct required item quantities from individual cart items
       let updatedCart = prev.map(item => {
         if (item.isCombo) return item;
 
-        const req = discount.comboItems.find((ci: any) => ci.productId === item.sku || ci.productId === item.id);
+        const req = comboItems.find((ci: any) => ci.sku === item.sku || ci.sku === item.id);
         if (req) {
           return {
             ...item,
-            quantity: item.quantity - req.minQty
+            quantity: item.quantity - req.qty
           };
         }
         return item;
       }).filter(item => item.quantity > 0);
 
-      const originalTotal = discount.comboItems.reduce((sum: number, ci: any) => {
-        const prod = products.find(p => p.sku === ci.productId || p.id === ci.productId);
-        return sum + (prod ? prod.price * ci.minQty : 0);
+      // 2. Compute normal total and discount
+      const originalTotal = combo.normalTotalPrice || comboItems.reduce((sum: number, ci: any) => {
+        const prod = products.find(p => p.sku === ci.sku || p.id === ci.sku);
+        return sum + (prod ? prod.price * ci.qty : (ci.unitPrice || 0) * ci.qty);
       }, 0);
 
+      const discountVal = combo.discountPercentage ?? combo.discountValue ?? 0;
+
+      // 3. Create combo pack in cart
       const comboPack = {
-        id: `combo-${discount.id}-${Date.now()}`,
-        name: `Combo: ${discount.name}`,
+        id: `combo-${combo.id}-${Date.now()}`,
+        name: `Combo: ${combo.name}`,
         price: originalTotal,
         quantity: 1,
-        discount: discount.discountValue,
+        discount: discountVal,
         isCombo: true,
-        discountId: discount.id,
-        comboItems: discount.comboItems.map((ci: any) => {
-          const prod = products.find(p => p.sku === ci.productId || p.id === ci.productId);
+        comboId: combo.isAiCombo ? combo.id : undefined,
+        discountId: combo.comboCode || combo.id,
+        comboItems: comboItems.map((ci: any) => {
+          const prod = products.find(p => p.sku === ci.sku || p.id === ci.sku);
           return {
-            sku: ci.productId,
-            qty: ci.minQty,
-            unitPrice: prod ? prod.price : 0
+            sku: ci.sku,
+            name: ci.name || (prod ? prod.name : ci.sku),
+            qty: ci.qty,
+            unitPrice: prod ? prod.price : (ci.unitPrice || 0)
           };
         }),
-        image: discount.imageUrl || "https://images.unsplash.com/photo-1497935586351-b67a49e012bf?q=80&w=800&auto=format&fit=crop"
+        image: combo.imageUrl || combo.items?.[0]?.product?.imageUrl || "https://images.unsplash.com/photo-1497935586351-b67a49e012bf?q=80&w=800&auto=format&fit=crop"
       };
 
       return [...updatedCart, comboPack];
@@ -508,7 +608,7 @@ export default function POSPage() {
 
     setShowComboSuggestionModal(false);
     setSuggestedCombo(null);
-    toast.success(`Grouped items into "${discount.name}" Combo Pack!`);
+    toast.success(`Grouped items into "${combo.name}" Combo Pack!`);
   };
 
   const declineSuggestedCombo = (discountId: string) => {
@@ -555,7 +655,7 @@ export default function POSPage() {
             qty: ci.qty,
             unitPrice: ci.unitPrice,
             total: ci.unitPrice * ci.qty * (1 - (item.discount || 0) / 100),
-            discountId: item.discountId || item.comboId || null,
+            discountId: null,
             comboId: item.comboId || item.discountId || null,
             discountValue: item.discount || 0
           }));
@@ -634,28 +734,97 @@ export default function POSPage() {
     }
   };
 
-  // Check for combo suggestions reactively
+  // Check for combo suggestions reactively (Both AI-generated approved combos and Manager-created standard combos)
   useEffect(() => {
     if (cart.length === 0) return;
 
     const individualItems = cart.filter(item => !item.isCombo);
+    if (individualItems.length === 0) return;
 
-    for (const d of discounts) {
-      if (d.type !== 'COMBO' || !d.comboItems || d.comboItems.length === 0) continue;
-      if (declinedCombos.includes(d.id)) continue;
+    // 1. Normalize AI combos (from posCombos)
+    const aiCombosUnified = (posCombos || []).map((c: any) => {
+      const items = (c.items || []).map((ci: any) => {
+        const prod = products.find(p => p.sku === ci.productId || p.id === ci.productId || p.sku === ci.product?.sku);
+        return {
+          sku: ci.productId || ci.product?.sku,
+          qty: Number(ci.quantity) || 1,
+          name: ci.product?.name || (prod ? prod.name : ci.productId),
+          unitPrice: Number(ci.normalUnitPrice) || (prod ? prod.price : 0)
+        };
+      });
 
-      const comboSatisfied = d.comboItems.every((ci: any) => {
-        const cartItem = individualItems.find(item => item.sku === ci.productId || item.id === ci.productId);
-        return cartItem && cartItem.quantity >= ci.minQty;
+      const normalTotal = Number(c.normalTotalPrice) || items.reduce((sum: number, it: any) => sum + (it.unitPrice * it.qty), 0);
+      const discountPct = Number(c.discountPercentage) || 0;
+      const comboPrice = c.comboPrice ? Number(c.comboPrice) : normalTotal * (1 - discountPct / 100);
+
+      return {
+        id: c.id,
+        name: c.name,
+        isAiCombo: true,
+        comboCode: c.comboCode,
+        discountPercentage: discountPct,
+        comboPrice: comboPrice,
+        normalTotalPrice: normalTotal,
+        imageUrl: c.items?.[0]?.product?.imageUrl,
+        items
+      };
+    });
+
+    // 2. Normalize Manager/Store combos (from discounts)
+    const managerCombosUnified = (discounts || [])
+      .filter((d: any) => d.type === 'COMBO' && d.comboItems && d.comboItems.length > 0)
+      .map((d: any) => {
+        const items = (d.comboItems || []).map((ci: any) => {
+          const prod = products.find(p => p.sku === ci.productId || p.id === ci.productId);
+          return {
+            sku: ci.productId,
+            qty: Number(ci.minQty) || 1,
+            name: prod ? prod.name : ci.productId,
+            unitPrice: prod ? prod.price : 0
+          };
+        });
+
+        const normalTotal = items.reduce((sum: number, it: any) => sum + (it.unitPrice * it.qty), 0);
+        const discountPct = Number(d.discountValue) || 0;
+        const comboPrice = d.comboPrice ? Number(d.comboPrice) : normalTotal * (1 - discountPct / 100);
+
+        return {
+          id: d.id,
+          name: d.name,
+          isAiCombo: false,
+          comboCode: d.label || `COMBO-${d.id.substring(0, 6).toUpperCase()}`,
+          discountPercentage: discountPct,
+          comboPrice: comboPrice,
+          normalTotalPrice: normalTotal,
+          imageUrl: d.imageUrl,
+          items
+        };
+      });
+
+    // Combine and deduplicate
+    const seenIds = new Set<string>();
+    const allActiveCombos = [...aiCombosUnified, ...managerCombosUnified].filter(c => {
+      if (!c.id || seenIds.has(c.id)) return false;
+      seenIds.add(c.id);
+      return true;
+    });
+
+    for (const combo of allActiveCombos) {
+      if (!combo.items || combo.items.length === 0) continue;
+      if (declinedCombos.includes(combo.id)) continue;
+
+      const comboSatisfied = combo.items.every((ci: any) => {
+        const cartItem = individualItems.find(item => item.sku === ci.sku || item.id === ci.sku);
+        return cartItem && cartItem.quantity >= ci.qty;
       });
 
       if (comboSatisfied) {
-        setSuggestedCombo(d);
+        setSuggestedCombo(combo);
         setShowComboSuggestionModal(true);
         break; // suggest one at a time
       }
     }
-  }, [cart, discounts, declinedCombos]);
+  }, [cart, discounts, posCombos, products, declinedCombos]);
 
   // Calculate total before any discounts
   const grossTotal = useMemo(() => {
@@ -1196,10 +1365,15 @@ export default function POSPage() {
       <nav className="flex-1 px-4 space-y-2 mt-4">
         <button
           onClick={() => setActiveTab('bill')}
-          className={`w-full flex items-center px-4 py-3 rounded-xl transition-colors font-semibold ${activeTab === 'bill' ? 'bg-[#dcfce7] text-[#166534]' : 'text-gray-600 hover:bg-gray-100'}`}
+          className={`w-full flex items-center px-4 py-3 rounded-xl transition-colors font-semibold relative ${activeTab === 'bill' ? 'bg-[#dcfce7] text-[#166534]' : 'text-gray-600 hover:bg-gray-100'}`}
         >
           <TerminalSquare className="w-5 h-5 mr-3" />
           Bill
+          {cart.length > 0 && (
+            <span className="absolute right-4 bg-[#166534] text-white text-[10px] font-black px-2 py-0.5 rounded-full min-w-[20px] text-center shadow-xs animate-in zoom-in">
+              {cart.reduce((sum, item) => sum + (item.quantity || 1), 0)}
+            </span>
+          )}
         </button>
         <button
           onClick={() => setActiveTab('products')}
@@ -1299,20 +1473,43 @@ export default function POSPage() {
   };
 
   const addDiscountProductsToCart = (discount: any) => {
-    if (discount.productIds && discount.productIds.length > 0) {
-      discount.productIds.forEach((sku: string) => {
-        const prod = products.find(p => p.sku === sku || p.id === sku);
+    const skus = discount.productIds && discount.productIds.length > 0 
+      ? discount.productIds 
+      : (discount.products || []).map((p: any) => p.sku);
+
+    if (skus && skus.length > 0) {
+      let addedCount = 0;
+      skus.forEach((sku: string) => {
+        let prod = products.find(p => p.sku === sku || p.id === sku);
+        if (!prod && discount.products) {
+          const dp = discount.products.find((p: any) => p.sku === sku);
+          if (dp) {
+            prod = {
+              id: dp.sku,
+              sku: dp.sku,
+              name: dp.name,
+              price: dp.sellingPrice,
+              currentStock: dp.currentStock,
+              image: dp.imageUrl
+            };
+          }
+        }
         if (prod) {
-          addToCart(prod, 1, discount.discountValue, discount.id);
+          addToCart(prod, 1, discount.discountValue, discount.id, true);
+          addedCount++;
         }
       });
-      toast.success(`Products for "${discount.name}" added to cart with ${discount.discountValue}% discount!`);
+      if (addedCount > 0) {
+        toast.success(`Package "${discount.name}" added to cart with ${discount.discountValue}% discount!`);
+      } else {
+        toast.error(`Products for "${discount.name}" not found in inventory.`);
+      }
     }
   };
 
   const addSingleDiscountProduct = (product: any, discount: any) => {
     if (product && discount) {
-      addToCart(product, 1, discount.discountValue, discount.id);
+      addToCart(product, 1, discount.discountValue, discount.id, true);
       toast.success(`${product.name} added to cart with ${discount.discountValue}% discount!`);
     }
   };
@@ -1436,11 +1633,21 @@ export default function POSPage() {
   const renderComboSuggestionModal = () => {
     if (!showComboSuggestionModal || !suggestedCombo) return null;
 
-    const originalTotal = suggestedCombo.comboItems.reduce((sum: number, ci: any) => {
-      const prod = products.find(p => p.sku === ci.productId || p.id === ci.productId);
-      return sum + (prod ? prod.price * ci.minQty : 0);
+    const comboItems = suggestedCombo.items || (suggestedCombo.comboItems?.map((ci: any) => ({
+      sku: ci.productId || ci.product?.sku,
+      qty: ci.minQty || ci.quantity || 1,
+      name: ci.product?.name,
+      unitPrice: ci.normalUnitPrice || ci.unitPrice
+    }))) || [];
+
+    const originalTotal = suggestedCombo.normalTotalPrice || comboItems.reduce((sum: number, ci: any) => {
+      const prod = products.find(p => p.sku === ci.sku || p.id === ci.sku);
+      return sum + ((prod ? prod.price : (ci.unitPrice || 0)) * ci.qty);
     }, 0);
-    const finalTotal = originalTotal * (1 - suggestedCombo.discountValue / 100);
+
+    const discountPct = suggestedCombo.discountPercentage ?? suggestedCombo.discountValue ?? 0;
+    const finalTotal = suggestedCombo.comboPrice || (originalTotal * (1 - discountPct / 100));
+    const savedAmount = Math.max(0, originalTotal - finalTotal);
 
     return (
       <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
@@ -1449,30 +1656,54 @@ export default function POSPage() {
             <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4">
               <Gift className="w-8 h-8 text-emerald-600 animate-bounce" />
             </div>
-            <h3 className="text-2xl font-extrabold text-gray-900 mb-2">Combo Deal Available! 🎉</h3>
+            <div className="flex items-center justify-center gap-2 mb-1.5">
+              <h3 className="text-2xl font-extrabold text-gray-900">Combo Deal Available! 🎉</h3>
+            </div>
+
+            <div className="flex justify-center mb-2">
+              {suggestedCombo.isAiCombo ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-purple-50 text-purple-700 border border-purple-200">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-600" /> AI Recommended Combo
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  Store Combo Deal
+                </span>
+              )}
+            </div>
+
             <p className="text-sm text-gray-500 font-medium">
-              We noticed you have the items for the <span className="font-bold text-gray-800">"{suggestedCombo.name}"</span> bundle.
+              We noticed you have the items for the <span className="font-bold text-gray-800">"{suggestedCombo.name}"</span> bundle in the bill!
             </p>
           </div>
 
           <div className="bg-gray-50 rounded-2xl p-5 mb-6 border border-gray-100">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Bundle Products:</p>
             <div className="space-y-2 mb-4">
-              {suggestedCombo.comboItems.map((ci: any, idx: number) => {
-                const prod = products.find(p => p.sku === ci.productId || p.id === ci.productId);
+              {comboItems.map((ci: any, idx: number) => {
+                const prod = products.find(p => p.sku === ci.sku || p.id === ci.sku);
                 return (
                   <div key={idx} className="flex justify-between text-sm font-bold text-gray-700">
-                    <span className="truncate pr-2">• {prod ? prod.name : ci.productId}</span>
-                    <span className="text-emerald-700">Qty: {ci.minQty}</span>
+                    <span className="truncate pr-2">• {prod ? prod.name : ci.name || ci.sku}</span>
+                    <span className="text-emerald-700 font-black">x{ci.qty}</span>
                   </div>
                 );
               })}
             </div>
             <div className="border-t border-gray-200/60 pt-3 flex justify-between items-center">
-              <span className="text-xs font-bold text-gray-500">Combo Bundle Price:</span>
+              <div>
+                <span className="text-xs font-bold text-gray-500">Combo Bundle Price:</span>
+                {savedAmount > 0 && (
+                  <span className="block text-[11px] font-bold text-emerald-600">
+                    Save Rs. {savedAmount.toFixed(2)} ({discountPct}% OFF)
+                  </span>
+                )}
+              </div>
               <div className="text-right">
-                <span className="text-gray-900 font-extrabold text-base block">Rs. {finalTotal.toFixed(2)}</span>
-                <span className="text-gray-400 line-through text-xs font-medium">Rs. {originalTotal.toFixed(2)}</span>
+                <span className="text-emerald-700 font-extrabold text-lg block">Rs. {finalTotal.toFixed(2)}</span>
+                {savedAmount > 0 && (
+                  <span className="text-gray-400 line-through text-xs font-medium">Rs. {originalTotal.toFixed(2)}</span>
+                )}
               </div>
             </div>
           </div>
@@ -1497,47 +1728,14 @@ export default function POSPage() {
   };
 
   const renderBarcodeModal = () => {
-    if (!showBarcodeModal) return null;
-      return (
-      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-            <h2 className="text-xl font-bold text-gray-800 flex items-center">
-              <ScanLine className="w-6 h-6 mr-2 text-[#1d4ed8]" /> Scan Barcode
-            </h2>
-            <button onClick={() => setShowBarcodeModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
-              <LogOut className="w-5 h-5 rotate-180" />
-            </button>
-          </div>
-          <div className="p-8 bg-gray-50 flex flex-col items-center">
-            <div className="relative w-64 h-64 bg-black rounded-lg overflow-hidden flex items-center justify-center shadow-inner">
-              {/* Simulated Camera View */}
-              <div className="absolute inset-0 opacity-40 bg-[url('https://images.unsplash.com/photo-1550989460-0adf9ea622e2?q=80&w=400&auto=format&fit=crop')] bg-cover bg-center mix-blend-luminosity"></div>
-              {/* Scanner Frame */}
-              <div className="absolute w-48 h-48 border-2 border-white/40 rounded-lg box-border"></div>
-              {/* Scanning Line Animation */}
-              <style>{`
-                  @keyframes scanLine {
-                    0% { top: 10%; }
-                    50% { top: 90%; }
-                    100% { top: 10%; }
-                  }
-                `}</style>
-              <div
-                className="absolute w-48 h-[2px] bg-red-500 shadow-[0_0_8px_2px_rgba(239,68,68,0.5)]"
-                style={{ animation: 'scanLine 2s linear infinite' }}
-              ></div>
-            </div>
-            <p className="mt-6 text-sm font-medium text-gray-600">Place the product barcode inside the frame</p>
-          </div>
-          <div className="p-4 bg-white border-t border-gray-100">
-            <button onClick={() => setShowBarcodeModal(false)} className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors">
-              Cancel
-            </button>
-          </div>
-        </div>
-      </div>
-      );
+    return (
+      <CashierBarcodeScannerModal
+        isOpen={showBarcodeModal}
+        onClose={() => setShowBarcodeModal(false)}
+        products={products}
+        addToCart={addToCart}
+      />
+    );
   };
 
   const renderAddProductModal = () => {
@@ -1900,6 +2098,8 @@ export default function POSPage() {
             loading={loading}
             filteredProducts={filteredProducts}
             addToCart={addToCart}
+            cart={cart}
+            setActiveTab={setActiveTab}
           />
         )}
         {activeTab === 'discounts' && (

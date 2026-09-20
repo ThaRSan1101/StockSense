@@ -26,7 +26,6 @@ export default function OffersPage() {
           const activeApproved = discRes.data.filter((d: any) => {
             if (!d.isActive || d.approvalStatus !== 'APPROVED') return false;
             if (d.endDate && d.endDate < todayStr) return false;
-            if (d.startDate && d.startDate > todayStr) return false;
             return true;
           });
           setDiscounts(activeApproved);
@@ -360,69 +359,91 @@ export default function OffersPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  {seasonalCampaigns.map((discount: any) => (
-                    <div key={discount.id} className="bg-white rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 flex flex-col justify-between group">
-                      
-                      {/* Campaign Header & Badge */}
-                      <div className="relative bg-gradient-to-br from-emerald-50/80 to-teal-50/40 p-6 border-b border-gray-100 flex flex-col justify-between">
-                        <div className="flex items-center justify-between">
-                          <span className="bg-[#103e2c] text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider shadow-sm flex items-center gap-1">
-                            <Calendar className="w-3 h-3 text-emerald-200" />
-                            {discount.discountValue}% OFF SEASONAL DEAL
-                          </span>
-                          <span className="text-[10px] font-black text-[#103e2c] bg-emerald-100/90 px-2.5 py-0.5 rounded uppercase tracking-wide border border-emerald-200/60">
-                            {discount.label || 'FESTIVE'}
-                          </span>
-                        </div>
+                  {seasonalCampaigns.map((discount: any) => {
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    const isUpcoming = discount.startDate && discount.startDate > todayStr;
 
-                        <div className="mt-4">
-                          <h3 className="text-xl font-black text-gray-900 leading-tight">{discount.name}</h3>
-                          <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800 mt-1">
-                            <Clock className="w-3.5 h-3.5 text-[#103e2c]" />
-                            <span>Valid: {discount.startDate} to {discount.endDate}</span>
+                    return (
+                      <div key={discount.id} className="bg-white rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 flex flex-col justify-between group">
+                        
+                        {/* Campaign Header & Badge */}
+                        <div className="relative bg-gradient-to-br from-emerald-50/80 to-teal-50/40 p-6 border-b border-gray-100 flex flex-col justify-between">
+                          <div className="flex items-center justify-between">
+                            {isUpcoming ? (
+                              <span className="bg-amber-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider shadow-sm flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-amber-200" />
+                                {discount.discountValue}% OFF UPCOMING DEAL
+                              </span>
+                            ) : (
+                              <span className="bg-[#103e2c] text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider shadow-sm flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-emerald-200" />
+                                {discount.discountValue}% OFF SEASONAL DEAL
+                              </span>
+                            )}
+                            <span className="text-[10px] font-black text-[#103e2c] bg-emerald-100/90 px-2.5 py-0.5 rounded uppercase tracking-wide border border-emerald-200/60">
+                              {discount.label || 'FESTIVE'}
+                            </span>
+                          </div>
+
+                          <div className="mt-4">
+                            <h3 className="text-xl font-black text-gray-900 leading-tight">{discount.name}</h3>
+                            <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800 mt-1">
+                              <Clock className="w-3.5 h-3.5 text-[#103e2c]" />
+                              <span>
+                                Valid: {discount.startDate} to {discount.endDate}
+                                {isUpcoming && (
+                                  <span className="ml-2 text-amber-800 font-bold bg-amber-100/80 px-2 py-0.5 rounded-full text-[10px]">
+                                    Starts {discount.startDate}
+                                  </span>
+                                )}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      {/* Package Items Included */}
-                      <div className="p-6 flex flex-col justify-between flex-1 space-y-4">
-                        <div>
-                          <p className="text-[10px] font-black uppercase text-gray-400 tracking-wider mb-2">
-                            Included Package Items ({discount.products?.length || 0} Items):
-                          </p>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {(discount.products || []).map((prod: any, idx: number) => {
-                              const discountedPrice = prod.sellingPrice * (1 - discount.discountValue / 100);
-                              return (
-                                <div key={idx} className="flex items-center gap-3 p-2.5 rounded-2xl bg-gray-50/80 border border-gray-100">
-                                  <img
-                                    src={prod.imageUrl || "https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?q=80&w=600&auto=format&fit=crop"}
-                                    alt={prod.name}
-                                    className="w-12 h-12 object-cover rounded-xl border border-gray-200/80 bg-white"
-                                  />
-                                  <div className="min-w-0 flex-1">
-                                    <h4 className="text-xs font-bold text-gray-900 truncate">{prod.name}</h4>
-                                    <div className="flex items-baseline gap-1.5 mt-0.5">
-                                      <span className="text-xs font-black text-[#103e2c]">Rs. {discountedPrice.toFixed(0)}</span>
-                                      <span className="text-[10px] text-gray-400 line-through">Rs. {prod.sellingPrice.toFixed(0)}</span>
+                        {/* Package Items Included */}
+                        <div className="p-6 flex flex-col justify-between flex-1 space-y-4">
+                          <div>
+                            <p className="text-[10px] font-black uppercase text-gray-400 tracking-wider mb-2">
+                              Included Package Items ({discount.products?.length || 0} Items):
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              {(discount.products || []).map((prod: any, idx: number) => {
+                                const discountedPrice = prod.sellingPrice * (1 - discount.discountValue / 100);
+                                return (
+                                  <div key={idx} className="flex items-center gap-3 p-2.5 rounded-2xl bg-gray-50/80 border border-gray-100">
+                                    <img
+                                      src={prod.imageUrl || "https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?q=80&w=600&auto=format&fit=crop"}
+                                      alt={prod.name}
+                                      className="w-12 h-12 object-cover rounded-xl border border-gray-200/80 bg-white"
+                                    />
+                                    <div className="min-w-0 flex-1">
+                                      <h4 className="text-xs font-bold text-gray-900 truncate">{prod.name}</h4>
+                                      <div className="flex items-baseline gap-1.5 mt-0.5">
+                                        <span className="text-xs font-black text-[#103e2c]">Rs. {discountedPrice.toFixed(0)}</span>
+                                        <span className="text-[10px] text-gray-400 line-through">Rs. {prod.sellingPrice.toFixed(0)}</span>
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <div className="pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-emerald-900 font-bold">
+                            <span className="flex items-center gap-1">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                              {isUpcoming
+                                ? `Upcoming promotion: ${discount.discountValue}% discount active from ${discount.startDate}`
+                                : `${discount.discountValue}% Promotional Discount Applied at POS`
+                              }
+                            </span>
                           </div>
                         </div>
 
-                        <div className="pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-emerald-900 font-bold">
-                          <span className="flex items-center gap-1">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                            {discount.discountValue}% Promotional Discount Applied at POS
-                          </span>
-                        </div>
                       </div>
-
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
             )}

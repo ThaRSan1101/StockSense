@@ -25,6 +25,13 @@ export const createRefund = async (req: AuthRequest, res: Response): Promise<voi
         billItems: true,
         refunds: {
           include: { refundItems: true }
+        },
+        comboSales: {
+          include: {
+            combo: {
+              include: { items: true }
+            }
+          }
         }
       }
     });
@@ -159,11 +166,20 @@ export const createRefund = async (req: AuthRequest, res: Response): Promise<voi
       // 3. Real-Time Combo Refund Sync
       for (const item of refundItems) {
         const originalBillItem = originalBill.billItems.find(bi => bi.sku === item.sku);
-        if (originalBillItem && originalBillItem.discountId) {
+        let combo: any = null;
+
+        // First check if original bill had a combo sale containing this product SKU
+        const matchedComboSale = (originalBill as any).comboSales?.find((cs: any) =>
+          cs.combo?.items?.some((ci: any) => ci.productId === item.sku)
+        );
+
+        if (matchedComboSale?.combo) {
+          combo = matchedComboSale.combo;
+        } else if (originalBillItem && originalBillItem.discountId) {
           const discountRef = originalBillItem.discountId;
           const isLikelyCombo = discountRef.startsWith('COMBO-') || discountRef.length >= 8;
           if (isLikelyCombo) {
-            const combo = await tx.combo.findFirst({
+            combo = await tx.combo.findFirst({
               where: {
                 OR: [
                   { id: discountRef },
@@ -171,19 +187,21 @@ export const createRefund = async (req: AuthRequest, res: Response): Promise<voi
                 ]
               }
             });
+          }
+        }
 
-            if (combo) {
-              const refundedQty = parseInt(item.qty);
-              const updatedSoldQty = Math.max(0, combo.soldQuantity - refundedQty);
-              const shouldReactivate = combo.status === 'COMPLETED' && (combo.maximumQuantity <= 0 || updatedSoldQty < combo.maximumQuantity);
+        if (combo) {
+          const refundedQty = parseInt(item.qty);
+          const updatedSoldQty = Math.max(0, combo.soldQuantity - refundedQty);
+          const shouldReactivate = combo.status === 'COMPLETED' && (combo.maximumQuantity <= 0 || updatedSoldQty < combo.maximumQuantity);
 
-              await tx.combo.update({
-                where: { id: combo.id },
-                data: {
-                  soldQuantity: updatedSoldQty,
-                  status: shouldReactivate ? 'ACTIVE' : combo.status
-                }
-              });
+          await tx.combo.update({
+            where: { id: combo.id },
+            data: {
+              soldQuantity: updatedSoldQty,
+              status: shouldReactivate ? 'ACTIVE' : combo.status
+            }
+          });
 
               // Adjust ComboPerformance
               const perf = await tx.comboPerformance.findFirst({ where: { comboId: combo.id } });
@@ -200,8 +218,6 @@ export const createRefund = async (req: AuthRequest, res: Response): Promise<voi
               }
             }
           }
-        }
-      }
 
       return refund;
     });
