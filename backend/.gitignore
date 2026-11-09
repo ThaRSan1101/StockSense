@@ -10,3 +10,6 @@ node_modules/
 
 # Build output
 dist/
+
+# Local database backups
+pre_clear_backup.sql

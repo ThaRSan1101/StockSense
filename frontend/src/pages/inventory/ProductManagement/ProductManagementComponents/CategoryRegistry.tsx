@@ -1,7 +1,6 @@
 import { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import CategoryTree from './SubComponents/CategoryTree';
 import { ProductItem } from './ProductsRegistry';
 import Pagination from '@/components/shared/Pagination';
 import { toast } from 'sonner';
@@ -337,25 +336,8 @@ export default function CategoryRegistry({
         </div>
       </div>
 
-      {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-
-        {/* Left: Hierarchy Tree */}
-        <div className="lg:col-span-1">
-          <CategoryTree
-            categories={categories}
-            onSelectSubcategory={(parentName, subName) => {
-              const cat = categories.find(c => c.name === parentName);
-              if (cat) {
-                const sub = cat.children.find(c => c.name === subName);
-                goToProducts(cat, sub);
-              }
-            }}
-          />
-        </div>
-
-        {/* Right: Dynamic View */}
-        <div className="lg:col-span-3 space-y-4">
+      {/* Dynamic View */}
+      <div className="space-y-4">
 
           {/* Breadcrumb Header */}
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -444,7 +426,7 @@ export default function CategoryRegistry({
                     <p>No {catStatusFilter === 'INACTIVE' ? 'inactive' : catStatusFilter === 'ACTIVE' ? 'active' : ''} categories found.</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
                     {paginatedCategories.map((category) => {
                       const isInactive = category.status === 'Inactive';
                       return (
@@ -558,7 +540,7 @@ export default function CategoryRegistry({
                   Back to Departments
                 </button>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
                   {activeSubcategories.map((child) => (
                     <div
                       key={child.id}
@@ -881,7 +863,6 @@ export default function CategoryRegistry({
           )}
 
         </div>
-      </div>
 
       {/* Category Modal */}
       {isModalOpen &&
