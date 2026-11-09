@@ -5,7 +5,7 @@ import {
   dismissNotification,
   createNotificationApi
 } from '../controllers/notificationController.js';
-import { authenticate } from '../middlewares/authMiddleware.js';
+import { authenticate, requireRole } from '../middlewares/authMiddleware.js';
 
 const router = Router();
 
@@ -14,7 +14,7 @@ router.get('/', authenticate, getNotifications);
 router.patch('/:id/read', authenticate, markNotificationRead);
 router.patch('/:id/dismiss', authenticate, dismissNotification);
 
-// Public / API triggers (for FastAPI AI service alerts)
-router.post('/', createNotificationApi);
+// Protected notification creation endpoint (ADMIN & INVENTORY_MANAGER only)
+router.post('/', authenticate, requireRole('ADMIN', 'INVENTORY_MANAGER'), createNotificationApi);
 
 export default router;

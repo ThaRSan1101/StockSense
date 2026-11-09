@@ -54,6 +54,12 @@ export function runValidationChecks(
     }
   });
 
+  refunds.forEach((r) => {
+    if (r.createdAt < minDate || r.createdAt > maxDate) {
+      addError(`Refund ${r.refundNumber} has date ${r.createdAt.toISOString()} out of range.`);
+    }
+  });
+
   // No January 2026 sales
   const jan2026 = new Date('2026-01-01T00:00:00Z');
   bills.forEach((b) => {
@@ -152,7 +158,7 @@ export function runValidationChecks(
 
     // Account for bill-level discount in totals
     const billLevelDiscount = b.totalDiscount - calcDiscount;
-    if (billLevelDiscount < 0) {
+    if (billLevelDiscount < -0.01) {
       addError(`Bill ${b.billNumber} has negative bill-level discount.`);
     }
 

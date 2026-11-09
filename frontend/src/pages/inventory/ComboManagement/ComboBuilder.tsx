@@ -1027,8 +1027,8 @@ export default function ComboBuilder() {
               const hasConflict = capacityList.some(c => c.lockedInOtherCombos > 0);
 
               return (
-                <div className="bg-emerald-50/40 rounded-2xl p-5 border border-emerald-100 space-y-4 mt-4">
-                  <div className="flex justify-between items-center">
+                <div className="bg-slate-50/60 rounded-2xl p-5 border border-slate-200 space-y-4 mt-4">
+                  <div className="flex justify-between items-center gap-4">
                     <div>
                       <span className="text-xs font-extrabold text-[#103e2c] flex items-center gap-1.5">
                         <span className="material-symbols-outlined text-[18px]">inventory_2</span>
@@ -1040,44 +1040,54 @@ export default function ComboBuilder() {
                     </div>
                     <button
                       type="button"
+                      disabled={bottleneckPacks <= 0}
                       onClick={() => {
                         if (bottleneckPacks > 0) setMaximumQuantity(bottleneckPacks);
                       }}
-                      className="text-[11px] font-extrabold text-[#103e2c] bg-white border border-emerald-300 px-3 py-1.5 rounded-xl hover:bg-emerald-100 transition-all cursor-pointer shadow-xs flex items-center gap-1.5 shrink-0"
+                      className="text-[11px] font-bold text-[#103e2c] bg-white border border-emerald-300 px-3 py-1.5 rounded-xl hover:bg-emerald-50 transition-all cursor-pointer shadow-xs flex items-center gap-1.5 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <span className="material-symbols-outlined text-[14px]">sync</span>
+                      <span className="material-symbols-outlined text-[15px]">sync</span>
                       Auto-Fit Safe Max ({bottleneckPacks} Packs)
                     </button>
                   </div>
 
                   {/* Active Combo Conflict Alert Banner */}
                   {hasConflict && (
-                    <div className="bg-amber-50/90 border border-amber-200/80 p-3.5 rounded-xl flex items-start gap-3 text-xs text-amber-950">
+                    <div className="bg-amber-50/70 border border-amber-200/80 p-3.5 rounded-xl flex items-start gap-3 text-xs">
                       <span className="material-symbols-outlined text-amber-600 text-[20px] shrink-0 mt-0.5">info</span>
                       <div className="space-y-1.5 flex-1">
-                        <div className="flex items-center justify-between">
-                          <p className="font-bold text-amber-900 text-xs">Shared Stock Notice (Active Combo Overlap)</p>
-                          <span className="text-[10px] font-bold text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded-md">Auto-Protected by AI</span>
-                        </div>
-                        
-                        <div className="text-[11px] text-amber-800 space-y-1">
-                          {capacityList.filter(c => c.lockedInOtherCombos > 0).map(c => (
-                            <div key={c.name} className="flex items-start gap-1.5">
-                              <span className="text-amber-600 font-bold">•</span>
-                              <span>
-                                <strong>{c.name}</strong> is already used in active campaign{' '}
-                                <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-amber-900 font-semibold">{c.overlappingCombos.map((oc: any) => oc.comboCode || oc.name).join(', ')}</code>{' '}
-                                (<strong>{c.lockedInOtherCombos} units</strong> reserved).
-                              </span>
-                            </div>
-                          ))}
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="font-bold text-amber-900 text-xs">Shared Stock with Active Campaigns</p>
+                          <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/70 px-2 py-0.5 rounded-md flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[12px]">verified</span>
+                            Safe Buffer Protected
+                          </span>
                         </div>
 
-                        <p className="text-[11px] text-amber-700/90 bg-amber-100/40 p-2 rounded-lg border border-amber-200/50 mt-1 flex items-center gap-1.5">
-                          <span className="material-symbols-outlined text-[15px] text-emerald-700 shrink-0">verified_user</span>
-                          <span>
-                            <strong>Zero Risk:</strong> AI already deducted these reserved units and kept regular customer stock safe. You can safely create up to <strong>{bottleneckPacks} packs</strong> for this combo.
-                          </span>
+                        <div className="space-y-1">
+                          {capacityList.filter(c => c.lockedInOtherCombos > 0).map(c => {
+                            const comboCount = c.overlappingCombos.length;
+                            const comboCodes = c.overlappingCombos.map((oc: any) => oc.comboCode || oc.name).join(', ');
+                            return (
+                              <div key={c.name} className="flex flex-wrap items-center gap-1.5 text-[11px] text-amber-900">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
+                                <span className="font-semibold text-slate-900">{c.name}:</span>
+                                <span>
+                                  <strong>{c.lockedInOtherCombos} units</strong> reserved across {comboCount} active {comboCount === 1 ? 'campaign' : 'campaigns'}
+                                </span>
+                                <span 
+                                  className="text-[10px] text-amber-700 bg-amber-100/90 px-1.5 py-0.5 rounded font-mono cursor-help"
+                                  title={comboCodes}
+                                >
+                                  {comboCount > 2 ? `${c.overlappingCombos.slice(0, 2).map((oc: any) => oc.comboCode || oc.name).join(', ')} +${comboCount - 2} more` : comboCodes}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <p className="text-[11px] text-amber-800/90 pt-0.5">
+                          AI automatically reserved these units to protect regular customers. You can safely create up to <strong>{bottleneckPacks} packs</strong> without stock shortages.
                         </p>
                       </div>
                     </div>
@@ -1085,70 +1095,143 @@ export default function ComboBuilder() {
 
                   {/* Multi-Tier Product Stock Breakdown Cards */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {capacityList.map(c => (
-                      <div 
-                        key={c.name} 
-                        className={`p-3.5 rounded-xl border space-y-2 ${
-                          c.possiblePacks === bottleneckPacks 
-                            ? 'bg-amber-50/40 border-amber-200 text-amber-950' 
-                            : 'bg-white border-gray-100 text-gray-800'
-                        }`}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="truncate pr-2">
-                            <p className="font-bold text-xs truncate">{c.name}</p>
-                            <span className="text-[10px] text-gray-400 font-mono">Role: {c.role} • {c.qtyPerPack}/pack</span>
-                          </div>
-                          <span className={`text-xs font-black px-2 py-0.5 rounded-md shrink-0 ${
-                            c.possiblePacks === bottleneckPacks 
-                              ? 'bg-amber-100 text-amber-900 border border-amber-200' 
-                              : 'bg-emerald-50 text-emerald-800 border border-emerald-100'
-                          }`}>
-                            {c.possiblePacks} Packs Max
-                          </span>
-                        </div>
+                    {capacityList.map(c => {
+                      const isBottleneck = c.possiblePacks === bottleneckPacks;
+                      const totalReserved = c.lockedInOtherCombos + c.walkinReserveBuffer;
+                      const availPercent = c.physicalStock > 0 ? Math.min(100, Math.round((c.availableForThisPromo / c.physicalStock) * 100)) : 0;
 
-                        {/* Stock Math Breakdown */}
-                        <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-gray-100/80 text-center text-[10px]">
-                          <div className="bg-gray-50 p-1.5 rounded-lg">
-                            <span className="text-gray-400 block font-medium">Physical Stock</span>
-                            <span className="font-bold text-gray-800">{c.physicalStock} Units</span>
+                      return (
+                        <div 
+                          key={c.name} 
+                          className={`p-4 rounded-xl border transition-all ${
+                            isBottleneck && bottleneckPacks === 0
+                              ? 'bg-rose-50/20 border-rose-200'
+                              : isBottleneck
+                              ? 'bg-amber-50/25 border-amber-200'
+                              : 'bg-white border-slate-200'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start gap-2 mb-2.5">
+                            <div className="min-w-0 pr-1">
+                              <p className="font-bold text-xs text-slate-800 truncate" title={c.name}>{c.name}</p>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className={`text-[9px] font-black px-1.5 py-0.2 rounded uppercase ${
+                                  c.role === 'TARGET' ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
+                                }`}>
+                                  {c.role}
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-medium">• {c.qtyPerPack} / pack</span>
+                              </div>
+                            </div>
+
+                            <span className={`text-xs font-black px-2.5 py-1 rounded-lg shrink-0 border ${
+                              c.possiblePacks === 0
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                : isBottleneck
+                                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            }`}>
+                              {c.possiblePacks} Packs Max {isBottleneck && <span className="text-[9px] font-bold opacity-80">(Limit)</span>}
+                            </span>
                           </div>
-                          <div className="bg-gray-50 p-1.5 rounded-lg">
-                            <span className="text-gray-400 block font-medium">Locked / Buffer</span>
-                            <span className="font-bold text-amber-800">-{c.lockedInOtherCombos + c.walkinReserveBuffer} Units</span>
+
+                          {/* 3 Metrics breakdown */}
+                          <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-100 text-center text-[10px]">
+                            <div>
+                              <span className="text-slate-400 block font-medium">Physical Stock</span>
+                              <span className="font-bold text-slate-700 text-xs mt-0.5 block">{c.physicalStock} Units</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block font-medium">Reserved Buffer</span>
+                              <span 
+                                className="font-bold text-amber-800 text-xs mt-0.5 block cursor-help"
+                                title={`${c.lockedInOtherCombos} in active combos + ${c.walkinReserveBuffer} walk-in reserve`}
+                              >
+                                {totalReserved} Units
+                              </span>
+                            </div>
+                            <div className="border-l border-slate-200/60 pl-1">
+                              <span className="text-slate-400 block font-medium">Safe Promo Pool</span>
+                              <span className={`font-black text-xs mt-0.5 block ${c.availableForThisPromo > 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                {c.availableForThisPromo} Units
+                              </span>
+                            </div>
                           </div>
-                          <div className="bg-emerald-50/60 p-1.5 rounded-lg border border-emerald-100">
-                            <span className="text-emerald-800 block font-medium">Safe Promo Pool</span>
-                            <span className="font-bold text-emerald-900">{c.availableForThisPromo} Units</span>
+
+                          {/* Mini Availability Progress Bar */}
+                          <div className="mt-2.5 space-y-1">
+                            <div className="flex justify-between text-[10px] text-slate-400 font-medium">
+                              <span>Promo Availability</span>
+                              <span className={availPercent > 0 ? 'text-slate-600 font-semibold' : 'text-rose-600 font-semibold'}>
+                                {availPercent > 0 ? `${availPercent}% Available` : 'Fully Reserved'}
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                              <div 
+                                className={`h-full rounded-full transition-all duration-300 ${
+                                  availPercent > 40 ? 'bg-emerald-500' : availPercent > 0 ? 'bg-amber-500' : 'bg-rose-400'
+                                }`}
+                                style={{ width: `${Math.max(4, availPercent)}%` }}
+                              />
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   {/* Campaign Target Volume Input */}
-                  <div className="bg-white p-3.5 rounded-xl border border-emerald-100/80 flex justify-between items-center gap-4">
-                    <div>
-                      <p className="text-xs font-extrabold text-gray-900">Set Max Campaign Volume</p>
-                      <p className="text-[11px] text-gray-500">
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs font-bold text-slate-800">Set Max Campaign Volume</p>
+                        {maximumQuantity > bottleneckPacks && bottleneckPacks > 0 && (
+                          <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[12px]">warning</span>
+                            Exceeds Safe Limit
+                          </span>
+                        )}
+                        {bottleneckPacks === 0 && (
+                          <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[12px]">block</span>
+                            0 Safe Packs Available
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500">
                         {bottleneckItem ? (
-                          <>Safe limit is bounded by <strong className="text-gray-800">{bottleneckItem.name}</strong> ({bottleneckPacks} packs max).</>
-                        ) : 'Sets total promo bundles allowed for POS checkout.'}
+                          <>
+                            Safe maximum is <strong className="text-slate-700">{bottleneckPacks} packs</strong> (bounded by <em>{bottleneckItem.name}</em>).
+                          </>
+                        ) : (
+                          'Sets total promo bundles allowed for POS checkout.'
+                        )}
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <div className="relative w-28">
+                    <div className="flex items-center gap-2 shrink-0">
+                      {bottleneckPacks > 0 && maximumQuantity !== bottleneckPacks && (
+                        <button
+                          type="button"
+                          onClick={() => setMaximumQuantity(bottleneckPacks)}
+                          className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+                        >
+                          Set to Safe Max ({bottleneckPacks})
+                        </button>
+                      )}
+                      <div className="relative w-32">
                         <input 
                           type="number"
                           min="1"
-                          max={bottleneckPacks > 0 ? bottleneckPacks * 2 : 500}
                           value={maximumQuantity}
                           onChange={(e) => setMaximumQuantity(parseInt(e.target.value) || 1)}
-                          className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none focus:bg-white focus:border-emerald-700 transition-all text-center text-[#103e2c]"
+                          className={`w-full bg-slate-50 border rounded-xl px-3 py-1.5 text-sm font-black outline-none focus:bg-white transition-all text-center ${
+                            maximumQuantity > bottleneckPacks
+                              ? 'border-amber-300 text-amber-900 focus:border-amber-500'
+                              : 'border-slate-200 text-[#103e2c] focus:border-emerald-700'
+                          }`}
                         />
-                        <span className="absolute right-2.5 top-1.5 text-[10px] text-gray-400 font-bold">Packs</span>
+                        <span className="absolute right-2.5 top-2 text-[10px] text-slate-400 font-bold pointer-events-none">Packs</span>
                       </div>
                     </div>
                   </div>

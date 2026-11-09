@@ -21,6 +21,20 @@ export interface GrnItemInput {
   epd: Date | null;
 }
 
+/**
+ * Calculates a controlled, realistic historical temporal factor across 2023-2025.
+ * 2023: scales ~0.88 to 0.92
+ * 2024: scales ~0.93 to 0.97
+ * 2025: scales ~0.98 to 1.00
+ */
+export function getHistoricalTemporalFactor(date: Date): number {
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth(); // 0-11
+  const monthIndex = Math.max(0, Math.min(35, (year - 2023) * 12 + month));
+  const factor = 0.88 + 0.12 * (monthIndex / 35);
+  return Number(factor.toFixed(4));
+}
+
 let grnCounter = 0;
 
 export function createRestockGrn(
@@ -43,6 +57,8 @@ export function createRestockGrn(
     notes: `Restock shipment received on ${date.toISOString().split('T')[0]}`,
   };
 
+  const temporalFactor = getHistoricalTemporalFactor(date);
+
   let itemIdx = 0;
   const grnItems: GrnItemInput[] = restockItems.map((item) => {
     itemIdx++;
@@ -59,13 +75,15 @@ export function createRestockGrn(
       epd.setUTCDate(epd.getUTCDate() + item.product.shelfLifeDays);
     }
 
+    const unitCost = Math.round(item.product.costPrice * temporalFactor);
+
     return {
       id: `grni-uuid-${grnCounter}-${itemIdx}`,
       grnId: dbGrnId,
       sku: item.product.sku,
       addedQuantity: item.addedQty,
       finalQuantity: finalQty,
-      unitCost: item.product.costPrice,
+      unitCost,
       mfd,
       epd,
     };

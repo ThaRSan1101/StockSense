@@ -181,3 +181,30 @@ def test_low_confidence():
     assert "low-confidence monthly forecast" in explanation
     assert "Manager review is recommended" in explanation
 
+# 11. Limited History Fallback Accuracy Scaling Test (0-100 scale)
+def test_limited_history_accuracy_scale():
+    # When product has limited history (<45 days or LIMITED_HISTORY behavior)
+    records = []
+    start_d = date(2025, 6, 1)
+    for i in range(20): # only 20 days of data (< 45 days)
+        d = start_d + timedelta(days=i)
+        records.append({
+            "date": d,
+            "net_qty_sold": 5.0,
+            "month": d.month,
+            "year": d.year,
+            "dayOfWeek": d.weekday(),
+            "weekendFlag": 1 if d.weekday() in [5, 6] else 0,
+            "average_unit_price": 10.0,
+            "discount_applied": False,
+            "discount_percentage": 0.0
+        })
+    df = pd.DataFrame(records)
+    model_name, params, mae, rmse, wape, accuracy, reliability, model_instance = select_best_model(df, "LIMITED_HISTORY", 7)
+    
+    assert model_name == "Moving Average"
+    assert wape == 0.50
+    # Must be 50.0 on 0-100 scale, NOT 0.50
+    assert accuracy == 50.0
+    assert reliability == "LOW"
+

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
-import { aiDemandService, ForecastRun, ProductForecastSummary, ProductForecastDetail } from '../../../../services/aiDemandService';
+import { aiDemandService, ForecastRun, ProductForecastSummary } from '../../../../services/aiDemandService';
 
 interface AiDemandTabProps {
   categories?: string[];
@@ -24,11 +25,6 @@ export default function AiDemandTab({ categories = [] }: AiDemandTabProps) {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState<number>(1);
   const limit = 10;
-
-  // Selected Product Detail State
-  const [selectedSku, setSelectedSku] = useState<string | null>(null);
-  const [productDetail, setProductDetail] = useState<ProductForecastDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState<boolean>(false);
 
   // Total status counts (across entire run, not just current page)
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
@@ -104,20 +100,6 @@ export default function AiDemandTab({ categories = [] }: AiDemandTabProps) {
     }
   };
 
-  // ── View Product Details ──────────────────────────────────────────────────
-  const handleViewDetails = async (sku: string) => {
-    if (!latestRun) return;
-    try {
-      setSelectedSku(sku);
-      setDetailLoading(true);
-      const detail = await aiDemandService.getProductForecastDetail(latestRun.id, sku);
-      setProductDetail(detail);
-    } catch (err: any) {
-      toast.error('Failed to load product forecast details.');
-    } finally {
-      setDetailLoading(false);
-    }
-  };
 
   // ── Category & Status List ─────────────────────────────────────────────────
   const categoryNames = categories.length > 0 ? categories : [
@@ -167,8 +149,8 @@ export default function AiDemandTab({ categories = [] }: AiDemandTabProps) {
       </div>
 
       {/* Confirmation Modal */}
-      {showConfirm && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      {showConfirm && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3 text-[#0b8252] mb-3">
               <span className="material-symbols-outlined text-[28px]">psychology</span>
@@ -192,7 +174,8 @@ export default function AiDemandTab({ categories = [] }: AiDemandTabProps) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* State Indicators */}
@@ -355,8 +338,7 @@ export default function AiDemandTab({ categories = [] }: AiDemandTabProps) {
                   forecasts.map((row) => (
                     <tr
                       key={row.sku}
-                      onClick={() => handleViewDetails(row.sku)}
-                      className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                      className="hover:bg-slate-50/80 transition-colors"
                     >
                       <td className="py-3 px-4">
                         <p className="font-bold text-slate-800">{row.name}</p>
@@ -430,155 +412,6 @@ export default function AiDemandTab({ categories = [] }: AiDemandTabProps) {
               </button>
             </div>
           )}
-        </div>
-      )}
-
-      {/* Product Detail Modal/Drawer */}
-      {selectedSku && (
-        <div
-          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setSelectedSku(null)}
-        >
-          <div
-            className="bg-white max-w-lg w-full max-h-[90vh] rounded-2xl shadow-2xl border border-slate-100 overflow-y-auto animate-in fade-in zoom-in-95 duration-200 flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {detailLoading ? (
-              <div className="flex flex-col items-center justify-center min-h-[300px] text-slate-400 gap-2 p-6">
-                <span className="animate-spin inline-block h-6 w-6 border-2 border-[#0b8252] border-t-transparent rounded-full"></span>
-                <span>Fetching product insights...</span>
-              </div>
-            ) : productDetail ? (
-              <div className="p-6 space-y-6">
-                {/* Header */}
-                <div className="flex justify-between items-start border-b border-slate-100 pb-4">
-                  <div>
-                    <span className="text-[10px] font-bold text-[#0b8252] uppercase tracking-wide">Product Insights</span>
-                    <h3 className="text-md font-bold text-slate-800 mt-1">{productDetail.name}</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">{productDetail.sku} • {productDetail.categoryName}</p>
-                  </div>
-                  <button
-                    onClick={() => setSelectedSku(null)}
-                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors text-slate-400 hover:text-slate-600"
-                  >
-                    <span className="material-symbols-outlined text-[20px] block">close</span>
-                  </button>
-                </div>
-
-                {/* Status and selected model */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    <p className="text-[10px] font-extrabold uppercase text-slate-400">Forecasting Model</p>
-                    <p className="text-xs font-bold text-slate-700 mt-1">{productDetail.selectedModel}</p>
-                    <p className="text-[10px] text-slate-500 mt-0.5">WAPE Score: {(productDetail.accuracyScore !== undefined && productDetail.accuracyScore !== null) ? `${(productDetail.accuracyScore * 100).toFixed(1)}%` : 'N/A'}</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    <p className="text-[10px] font-extrabold uppercase text-slate-400">Forecast Status</p>
-                    <div className="mt-1">
-                      {productDetail.status === 'CRITICAL_ACTION' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 text-[10px] font-bold">
-                          Critical Action
-                        </span>
-                      )}
-                      {productDetail.status === 'SUFFICIENT' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold">
-                          Sufficient
-                        </span>
-                      )}
-                      {productDetail.status === 'OVERSTOCK_RISK' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold">
-                          Overstock Risk
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-slate-500 mt-0.5">Target: {productDetail.targetMonth.slice(0, 7)}</p>
-                  </div>
-                </div>
-
-                {/* Prediction values */}
-                <div className="grid grid-cols-3 gap-2 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                  <div className="text-center border-r border-slate-200/60">
-                    <p className="text-[9px] font-extrabold uppercase text-slate-400">Current Stock</p>
-                    <p className="text-md font-bold text-slate-700 mt-1">{productDetail.currentStock}</p>
-                  </div>
-                  <div className="text-center border-r border-slate-200/60">
-                    <p className="text-[9px] font-extrabold uppercase text-slate-400">Next Month Demand</p>
-                    <p className="text-md font-bold text-[#0b8252] mt-1">{productDetail.predictedDemand}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[9px] font-extrabold uppercase text-slate-400">Recommended Qty</p>
-                    <p className="text-md font-bold text-slate-800 mt-1">{productDetail.recommendedQuantity}</p>
-                  </div>
-                </div>
-
-                {/* Explanation text */}
-                <div className="bg-[#0b8252]/5 p-4 rounded-xl border border-[#0b8252]/10 space-y-2">
-                  <div className="flex items-center gap-1.5 text-[#0b8252] text-[10px] font-extrabold uppercase">
-                    <span className="material-symbols-outlined text-[14px]">info</span>
-                    Explanation & Reason
-                  </div>
-                  <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                    {productDetail.predictionReason}
-                  </p>
-                </div>
-
-                {/* Measured Metrics */}
-                <div className="space-y-3">
-                  <h4 className="text-xs font-bold text-slate-700">Measured Demand Analytics</h4>
-                  
-                  <div className="space-y-2 border border-slate-100 rounded-xl p-4 text-xs">
-                    <div className="flex justify-between py-1.5 border-b border-slate-100">
-                      <span className="text-slate-500">Recent 30-Day Sales</span>
-                      <span className="font-bold text-slate-700">{productDetail.recent30DaySales} units</span>
-                    </div>
-                    <div className="flex justify-between py-1.5 border-b border-slate-100">
-                      <span className="text-slate-500">Previous 30-Day Sales</span>
-                      <span className="font-bold text-slate-700">{productDetail.previous30DaySales} units</span>
-                    </div>
-                    <div className="flex justify-between py-1.5 border-b border-slate-100">
-                      <span className="text-slate-500">Recent Growth Rate</span>
-                      <span className={`font-bold ${productDetail.recentGrowthPercent && productDetail.recentGrowthPercent > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {productDetail.recentGrowthPercent ? `${(productDetail.recentGrowthPercent * 100).toFixed(1)}%` : '0%'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between py-1.5 border-b border-slate-100">
-                      <span className="text-slate-500">3-Month Monthly Average</span>
-                      <span className="font-bold text-slate-700">{Math.round(productDetail.threeMonthAverage)} units</span>
-                    </div>
-                    <div className="flex justify-between py-1.5 border-b border-slate-100">
-                      <span className="text-slate-500">6-Month Monthly Average</span>
-                      <span className="font-bold text-slate-700">{Math.round(productDetail.sixMonthAverage)} units</span>
-                    </div>
-                    <div className="flex justify-between py-1.5 border-b border-slate-100">
-                      <span className="text-slate-500">Same-Month Historical Average</span>
-                      <span className="font-bold text-slate-700">
-                        {productDetail.sameMonthHistoricalAverage ? `${Math.round(productDetail.sameMonthHistoricalAverage)} units` : 'N/A'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between py-1.5 border-b border-slate-100">
-                      <span className="text-slate-500">Discount Uplift Factor</span>
-                      <span className="font-bold text-[#0b8252]">
-                        {productDetail.discountUpliftPercent ? `+${(productDetail.discountUpliftPercent * 100).toFixed(1)}%` : '0%'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between py-1.5">
-                      <span className="text-slate-500">Recent Refund Volume</span>
-                      <span className="font-bold text-slate-700">{productDetail.refundQuantity} units</span>
-                    </div>
-                  </div>
-                </div>
-                {/* Close button footer */}
-                <div className="border-t border-slate-100 pt-4">
-                  <button
-                    onClick={() => setSelectedSku(null)}
-                    className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors"
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </div>
         </div>
       )}
     </div>

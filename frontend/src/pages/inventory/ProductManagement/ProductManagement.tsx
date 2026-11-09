@@ -392,22 +392,26 @@ export default function ProductManagement() {
           if (lower.includes('produce')) return '🥬';
           return '📦';
         };
-        const mappedCats = catRes.data.map((c: any) => ({
-          id: c.id,
-          name: c.name,
-          icon: getIcon(c.name),
-          image: c.categoryImageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=600&auto=format&fit=crop',
-          status: c.isActive ? 'Active' : 'Inactive',
-          statusClass: c.isActive ? 'bg-emerald-600' : 'bg-slate-500',
-          skus: mappedProducts.filter((p) => p.category === c.name).length,
-          health: '100%',
-          description: c.description || `All ${c.name} products`,
-          children: (c.subCategories || []).map((sub: any) => ({
-            id: sub.id,
-            name: sub.name,
-            status: sub.isActive ? 'Active' : 'Inactive'
-          }))
-        }));
+        const cleanStr = (s?: string) => s ? s.replace(/&amp;/g, '&') : s;
+        const mappedCats = catRes.data.map((c: any) => {
+          const cleanedName = cleanStr(c.name) || '';
+          return {
+            id: c.id,
+            name: cleanedName,
+            icon: getIcon(cleanedName),
+            image: cleanStr(c.categoryImageUrl) || 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=600&auto=format&fit=crop',
+            status: c.isActive ? 'Active' : 'Inactive',
+            statusClass: c.isActive ? 'bg-emerald-600' : 'bg-slate-500',
+            skus: mappedProducts.filter((p) => p.category === cleanedName || p.category === c.name).length,
+            health: '100%',
+            description: cleanStr(c.description) || `All ${cleanedName} products`,
+            children: (c.subCategories || []).map((sub: any) => ({
+              id: sub.id,
+              name: cleanStr(sub.name) || '',
+              status: sub.isActive ? 'Active' : 'Inactive'
+            }))
+          };
+        });
         setCategories(mappedCats);
       }
 

@@ -32,7 +32,7 @@ def select_best_model(
         mae = 0.0
         rmse = 0.0
         wape = 0.50
-        accuracy = 0.50
+        accuracy = 50.0
         reliability = "LOW"
         
         return model_name, model_params, mae, rmse, wape, accuracy, reliability, model_instance

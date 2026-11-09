@@ -230,10 +230,10 @@ export default function AccountManagement() {
     if (!passwordResetUser) return;
     try {
       const res = await authService.resetPassword(passwordResetUser.id);
-      if (res.emailSent) {
+      if (res?.emailSent) {
         toast.success(`Password reset successful. A new password has been generated and sent to ${passwordResetUser.email}`, { duration: 5000 });
       } else {
-        toast.success(`Password reset successful! (SMTP not configured, so email skipped). New password is: ${res.newPassword}`, { duration: 10000 });
+        toast.success('Password reset successfully.', { duration: 5000 });
       }
       setPasswordResetUser(null);
     } catch (err: any) {
@@ -260,13 +260,6 @@ export default function AccountManagement() {
   const activeManagers = users.filter(u => u.role === 'INVENTORY_MANAGER' && u.isActive !== false).length;
   const inactiveAccounts = users.filter(u => u.isActive === false).length;
 
-  const passChecks = {
-    length: formData.password.length >= 8,
-    upper: /[A-Z]/.test(formData.password),
-    lower: /[a-z]/.test(formData.password),
-    number: /\d/.test(formData.password),
-    special: /[@$!%*?&]/.test(formData.password)
-  };
 
   return (
     <div className="flex h-screen bg-[radial-gradient(circle_at_top_right,_rgba(11,130,82,0.10),_transparent_30%),linear-gradient(180deg,_#f8fafc_0%,_#f5f7fb_100%)] text-slate-800 font-sans overflow-hidden">

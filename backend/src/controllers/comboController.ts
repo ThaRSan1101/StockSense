@@ -4,14 +4,19 @@ import { prisma } from '../config/prisma.js';
 import { ComboValidationService } from '../services/comboValidationService.js';
 import { Role } from '@prisma/client';
 
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://127.0.0.1:8080/api/combo-analysis';
+const getComboServiceUrl = (): string => {
+  const base = (process.env.AI_SERVICE_URL || 'http://127.0.0.1:8000')
+    .replace(':8080', ':8000')
+    .replace(/\/+$/, '');
+  return base.includes('/api/combo-analysis') ? base : `${base}/api/combo-analysis`;
+};
 
 // ── PROXY TO FASTAPI AI RUNS ─────────────────────────────────────────
 
 export async function runComboAnalysis(req: AuthRequest, res: Response): Promise<void> {
   try {
     const { cutoffDate } = req.body;
-    const response = await fetch(`${AI_SERVICE_URL}/run`, {
+    const response = await fetch(`${getComboServiceUrl()}/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -35,7 +40,7 @@ export async function runComboAnalysis(req: AuthRequest, res: Response): Promise
 export async function getComboAnalysisStatus(req: AuthRequest, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    const response = await fetch(`${AI_SERVICE_URL}/runs/${id}`);
+    const response = await fetch(`${getComboServiceUrl()}/runs/${id}`);
     const data = await response.json();
     if (!response.ok) {
       res.status(response.status).json({ success: false, message: data.detail || 'Failed to fetch analysis status.' });
@@ -268,7 +273,7 @@ export async function getSuggestionDetails(req: AuthRequest, res: Response): Pro
 export async function generateSuggestions(req: AuthRequest, res: Response): Promise<void> {
   try {
     const opportunityId = req.params.id as string;
-    const response = await fetch(`${AI_SERVICE_URL}/suggestions/generate/${opportunityId}`, {
+    const response = await fetch(`${getComboServiceUrl()}/suggestions/generate/${opportunityId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req.body || {})

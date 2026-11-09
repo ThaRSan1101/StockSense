@@ -50,7 +50,7 @@ export default function OpportunityDetail() {
     } catch (error: any) {
       // Axios interceptor already shows toast for non-401 errors, so only handle connection failures here
       if (!error?.response) {
-        toast.error('AI service is unreachable. Please ensure the AI engine is running on port 8080.');
+        toast.error('AI service is unreachable. Please ensure the AI engine is running on port 8000.');
       }
     } finally {
       setGenerating(false);

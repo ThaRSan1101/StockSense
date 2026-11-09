@@ -120,6 +120,17 @@ async function main() {
 
       const stock = runningStock.get(prod.sku) || 0;
 
+      // Controlled presentation scenarios in late 2025:
+      // 1. Out of stock: Sunlight Soap has supplier factory maintenance after Aug 15, 2025
+      if (currentDate >= new Date('2025-08-15T00:00:00Z') && prod.name.includes('Sunlight Soap 120g')) {
+        return; // do not restock; sales will naturally deplete stock to 0
+      }
+
+      // 2. Low stock / Reorder needed: Anchor Milk Powder experiences delivery delay after Oct 15, 2025
+      if (currentDate >= new Date('2025-10-15T00:00:00Z') && prod.name.includes('Anchor Milk Powder 400g')) {
+        return; // do not restock; sales bring stock below reorder level (75)
+      }
+
       // Initial restock on launch day or when below reorderLevel
       const isLaunchDay = currentDate.getTime() - prod.launchDate.getTime() < 24 * 3600 * 1000;
       if (isLaunchDay && stock === 0) {
@@ -130,7 +141,13 @@ async function main() {
         });
       } else if (stock <= prod.reorderLevel) {
         // Trigger restocking up to target capacity
-        const needed = prod.targetCapacity - stock;
+        let needed = prod.targetCapacity - stock;
+
+        // 3. Overstock: Prima Wheat Flour receives extra seasonal shipment on Dec 15, 2025
+        if (dateStr === '2025-12-15' && prod.name.includes('Prima Wheat Flour')) {
+          needed += 350;
+        }
+
         if (needed > 0) {
           restockItems.push({
             product: prod,
@@ -138,6 +155,13 @@ async function main() {
             addedQty: needed,
           });
         }
+      } else if (dateStr === '2025-12-15' && prod.name.includes('Prima Wheat Flour')) {
+        // Bulk overstock delivery on Dec 15
+        restockItems.push({
+          product: prod,
+          currentStock: stock,
+          addedQty: 350,
+        });
       }
     });
 
@@ -238,6 +262,7 @@ async function main() {
     targetCapacity: p.targetCapacity,
     status: p.status,
     seasonal: p.seasonal,
+    imageUrl: p.imageUrl,
     createdAt: p.launchDate,
     updatedAt: new Date('2025-12-31T23:59:59Z'),
   }));

@@ -1,6 +1,11 @@
 import { prisma } from '../config/prisma.js';
 
-const AI_SERVICE_URL = process.env.AI_DEMAND_SERVICE_URL || process.env.AI_SERVICE_URL || 'http://127.0.0.1:8080/api/ai-demand';
+const getAiDemandServiceUrl = (): string => {
+  const base = (process.env.AI_DEMAND_SERVICE_URL || process.env.AI_SERVICE_URL || 'http://127.0.0.1:8000')
+    .replace(':8080', ':8000')
+    .replace(/\/+$/, '');
+  return base.includes('/api/ai-demand') ? base : `${base}/api/ai-demand`;
+};
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // Check every 1 hour
 
 export function startForecastScheduler() {
@@ -63,7 +68,7 @@ async function checkAndTriggerForecast() {
 
     console.log(`[Scheduler] Launching automated monthly forecasting task for: ${targetMonthStr}`);
 
-    const response = await fetch(`${AI_SERVICE_URL}/forecast`, {
+    const response = await fetch(`${getAiDemandServiceUrl()}/forecast`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 

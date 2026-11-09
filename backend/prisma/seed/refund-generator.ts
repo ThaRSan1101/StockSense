@@ -49,10 +49,16 @@ export function generateRefundsForBills(
     const refundId = `ref-uuid-${refundCounter}`;
     const refundNumber = `REF-${bill.createdAt.getUTCFullYear()}-${refundCounter.toString().padStart(6, '0')}`;
 
-    // Refund date is 1 to 4 days after bill date
+    // Refund date is 1 to 4 days after bill date (strictly <= 2025-12-31)
     const refundDate = new Date(bill.createdAt);
     refundDate.setUTCDate(refundDate.getUTCDate() + random.nextInt(1, 4));
     refundDate.setUTCHours(random.nextInt(9, 18), random.nextInt(0, 59));
+
+    const maxRefundDate = new Date('2025-12-31T20:00:00Z');
+    if (refundDate > maxRefundDate) {
+      // If purchase was in late December, refund within same day 2-4 hours later
+      refundDate.setTime(bill.createdAt.getTime() + (random.nextInt(2, 4) * 3600 * 1000));
+    }
 
     const currentRefundItems: RefundItemInput[] = [];
 
