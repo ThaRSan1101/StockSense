@@ -42,6 +42,25 @@ const updateUserSchema = z.object({
 
 const REFRESH_TOKEN_COOKIE = 'stocksense_refresh'
 
+/**
+ * Cookie options helper for refresh token:
+ * In cross-site production deployments (e.g. Vercel frontend on *.vercel.app and Render backend on *.onrender.com):
+ * - secure MUST be true (mandated by modern browsers whenever sameSite is 'none').
+ * - sameSite MUST be 'none' to allow cross-site cookie transmission via Axios/fetch withCredentials: true.
+ * - In local development (HTTP on localhost), sameSite: 'lax' and secure: false are used.
+ * NOTE: Modern browser third-party cookie restrictions (e.g. Safari ITP, Chrome third-party cookie phase-out/incognito)
+ * may still restrict cross-origin cookies unless frontend and backend share a common top-level domain (e.g. app.stocksense.lk and api.stocksense.lk).
+ */
+const getRefreshTokenCookieOptions = () => {
+  const isProd = process.env.NODE_ENV === 'production'
+  return {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
+    path: '/',
+  }
+}
+
 // ─── POST /api/auth/login ───────────────────────────────────────────
 export async function login(req: Request, res: Response): Promise<void> {
   try {
@@ -78,11 +97,8 @@ export async function login(req: Request, res: Response): Promise<void> {
     const refreshToken = signRefreshToken(payload)
 
     // Set Refresh Token in HttpOnly cookie
-    // Secure flag should be true in production (HTTPS)
     res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+      ...getRefreshTokenCookieOptions(),
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     })
 
@@ -139,11 +155,7 @@ export async function refreshToken(req: Request, res: Response): Promise<void> {
 
 // ─── POST /api/auth/logout ──────────────────────────────────────────
 export async function logout(req: Request, res: Response): Promise<void> {
-  res.clearCookie(REFRESH_TOKEN_COOKIE, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-  })
+  res.clearCookie(REFRESH_TOKEN_COOKIE, getRefreshTokenCookieOptions())
   res.status(200).json({ success: true, message: 'Logged out successfully.' })
 }
 

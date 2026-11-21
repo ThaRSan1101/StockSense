@@ -8,12 +8,21 @@ const getAiDemandServiceUrl = (): string => {
 };
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // Check every 1 hour
 
+let initialTimeoutId: NodeJS.Timeout | null = null;
+let intervalId: NodeJS.Timeout | null = null;
+
 export function startForecastScheduler() {
   console.log('[Scheduler] AI Demand Forecasting Scheduler initialized.');
 
   // Run initial check after 10 seconds, then check every hour
-  setTimeout(checkAndTriggerForecast, 10000);
-  setInterval(checkAndTriggerForecast, CHECK_INTERVAL_MS);
+  initialTimeoutId = setTimeout(checkAndTriggerForecast, 10000);
+  intervalId = setInterval(checkAndTriggerForecast, CHECK_INTERVAL_MS);
+}
+
+export function stopForecastScheduler() {
+  if (initialTimeoutId) clearTimeout(initialTimeoutId);
+  if (intervalId) clearInterval(intervalId);
+  console.log('[Scheduler] AI Demand Forecasting Scheduler stopped.');
 }
 
 async function checkAndTriggerForecast() {
@@ -77,6 +86,7 @@ async function checkAndTriggerForecast() {
         regenerate: false,
         triggerType: 'SCHEDULED' 
       }),
+      signal: AbortSignal.timeout(120000), // 120s timeout for scheduled bulk ML model execution
     });
 
     const data = await response.json();

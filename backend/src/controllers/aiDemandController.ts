@@ -19,12 +19,12 @@ export async function generateForecast(req: AuthRequest, res: Response): Promise
 
     const isForce = !!(force || regenerate);
 
-    // Call Python FastAPI service to trigger forecast generation
-    // We send force as true if regenerate is requested
+    // Call Python FastAPI service to trigger forecast generation (90s timeout for ML model training)
     const response = await fetch(`${getAiDemandServiceUrl()}/forecast`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ targetMonth, force: isForce, regenerate: isForce }),
+      signal: AbortSignal.timeout(90000),
     });
 
     const data = await response.json();
@@ -36,7 +36,12 @@ export async function generateForecast(req: AuthRequest, res: Response): Promise
     res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error generating forecast:', error);
-    res.status(500).json({ success: false, message: 'AI service is currently unavailable.' });
+    const isTimeout = error.name === 'TimeoutError' || error.name === 'AbortError';
+    const status = isTimeout ? 504 : 503;
+    const message = isTimeout
+      ? 'AI forecasting operation timed out. The AI service may be waking up or processing a heavy model workload.'
+      : 'AI service is currently unavailable.';
+    res.status(status).json({ success: false, message });
   }
 }
 

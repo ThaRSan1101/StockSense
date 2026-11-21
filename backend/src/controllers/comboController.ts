@@ -16,13 +16,15 @@ const getComboServiceUrl = (): string => {
 export async function runComboAnalysis(req: AuthRequest, res: Response): Promise<void> {
   try {
     const { cutoffDate } = req.body;
+    // Association rule mining & substitute detection (90s timeout)
     const response = await fetch(`${getComboServiceUrl()}/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         cutoffDate: cutoffDate || null,
         createdBy: req.user?.name || 'SYSTEM'
-      })
+      }),
+      signal: AbortSignal.timeout(90000),
     });
 
     const data = await response.json();
@@ -33,14 +35,22 @@ export async function runComboAnalysis(req: AuthRequest, res: Response): Promise
     res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error running combo analysis:', error);
-    res.status(500).json({ success: false, message: 'AI service is currently unavailable.' });
+    const isTimeout = error.name === 'TimeoutError' || error.name === 'AbortError';
+    const status = isTimeout ? 504 : 503;
+    const message = isTimeout
+      ? 'Combo analysis operation timed out. The AI service may be waking up or processing a heavy dataset.'
+      : 'AI service is currently unavailable.';
+    res.status(status).json({ success: false, message });
   }
 }
 
 export async function getComboAnalysisStatus(req: AuthRequest, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    const response = await fetch(`${getComboServiceUrl()}/runs/${id}`);
+    // Quick status check (15s timeout)
+    const response = await fetch(`${getComboServiceUrl()}/runs/${id}`, {
+      signal: AbortSignal.timeout(15000),
+    });
     const data = await response.json();
     if (!response.ok) {
       res.status(response.status).json({ success: false, message: data.detail || 'Failed to fetch analysis status.' });
@@ -49,7 +59,12 @@ export async function getComboAnalysisStatus(req: AuthRequest, res: Response): P
     res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching analysis status:', error);
-    res.status(500).json({ success: false, message: 'AI service is currently unavailable.' });
+    const isTimeout = error.name === 'TimeoutError' || error.name === 'AbortError';
+    const status = isTimeout ? 504 : 503;
+    const message = isTimeout
+      ? 'Fetching combo analysis status timed out.'
+      : 'AI service is currently unavailable.';
+    res.status(status).json({ success: false, message });
   }
 }
 
@@ -273,10 +288,12 @@ export async function getSuggestionDetails(req: AuthRequest, res: Response): Pro
 export async function generateSuggestions(req: AuthRequest, res: Response): Promise<void> {
   try {
     const opportunityId = req.params.id as string;
+    // Suggestion generation (45s timeout)
     const response = await fetch(`${getComboServiceUrl()}/suggestions/generate/${opportunityId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body || {})
+      body: JSON.stringify(req.body || {}),
+      signal: AbortSignal.timeout(45000),
     });
 
     const data = await response.json();
@@ -288,7 +305,12 @@ export async function generateSuggestions(req: AuthRequest, res: Response): Prom
     res.status(200).json({ success: true, suggestions: data.suggestions });
   } catch (error: any) {
     console.error('Error generating suggestions:', error);
-    res.status(500).json({ success: false, message: 'AI service is currently unavailable.' });
+    const isTimeout = error.name === 'TimeoutError' || error.name === 'AbortError';
+    const status = isTimeout ? 504 : 503;
+    const message = isTimeout
+      ? 'Generating combo suggestions timed out. The AI service may be busy or waking up.'
+      : 'AI service is currently unavailable.';
+    res.status(status).json({ success: false, message });
   }
 }
 
